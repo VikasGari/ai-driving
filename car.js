@@ -1,79 +1,87 @@
 class Car {
-  // ... constructor is unchanged ...
   constructor(x, y, width, height, controlType, maxSpeed = 3) {
+    this.toRemove = false;
+    this.lane = 0;
     this.x = x;
     this.y = y;
     this.width = width;
     this.height = height;
     this.speed = 0;
-    this.acceleration = 0.2;
     this.maxSpeed = maxSpeed;
-    this.friction = 0.05;
     this.angle = 0;
     this.damaged = false;
     this.controls = new Controls(controlType);
     this.controls.type = controlType;
+    // NEW: Progress along the path in pixels
+    this.pathProgress = 0;
     if (controlType !== "DUMMY") {
       this.sensor = new Sensor(this);
+      // Physics properties are now ONLY for the player car
+      this.acceleration = 0.2;
+      this.friction = 0.05;
     }
   }
-  update(roadBorders, traffic, mode = "DRIVING") {
+
+  update(roadBorders, traffic, mode = "DRIVING", lanePath = null) {
     if (!this.damaged) {
-      if (this.controls.type !== "DUMMY" && mode === "DRIVING") {
-        this.#move();
-      } else if (this.controls.type === "DUMMY") {
-        this.#move();
+      // Player car uses physics-based movement
+      if (this.controls.type !== "DUMMY") {
+        if (mode === "DRIVING") {
+          this.#move();
+        }
       }
+      // Traffic cars are snapped to their path
+      else if (lanePath && lanePath.length > 0) {
+        this.#snapToLane(lanePath);
+      }
+
+      // Polygon and damage checks are still needed for all cars
       this.polygon = this.#createPolygon();
       this.damaged = this.#assessDamage(roadBorders, traffic);
     }
+
+    // Only player car has sensors
     if (this.sensor) {
       this.sensor.update(roadBorders, traffic);
     }
   }
 
-  // UPDATED assessDamage method
-  #assessDamage(roadBorders, traffic) {
-    // Use the new, correct function for road borders (open lines)
-    for (let i = 0; i < roadBorders.length; i++) {
-      if (polyIntersectsPolyline(this.polygon, roadBorders[i])) {
-        return true;
-      }
+  // NEW: The logic to snap a car to a pre-calculated path
+  #snapToLane(lanePath) {
+    this.pathProgress += this.speed;
+
+    let currentPointIndex = 0;
+    let dist = 0;
+    while (
+      dist < this.pathProgress &&
+      currentPointIndex < lanePath.length - 1
+    ) {
+      dist += Math.hypot(
+        lanePath[currentPointIndex + 1].x - lanePath[currentPointIndex].x,
+        lanePath[currentPointIndex + 1].y - lanePath[currentPointIndex].y
+      );
+      currentPointIndex++;
     }
-    // Use the old function for traffic cars (closed shapes)
-    for (let i = 0; i < traffic.length; i++) {
-      if (polysIntersect(this.polygon, traffic[i].polygon)) {
-        return true;
-      }
+
+    if (currentPointIndex >= lanePath.length - 1) {
+      this.toRemove = true;
+      return;
     }
-    return false;
+
+    const p1 = lanePath[currentPointIndex - 1];
+    const p2 = lanePath[currentPointIndex];
+
+    // Set the car's position directly on the path segment
+    this.x = p2.x;
+    this.y = p2.y;
+
+    // Set the car's angle to match the path segment's direction
+    this.angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) + Math.PI / 2;
   }
 
-  // ... #createPolygon, #move, and draw methods are unchanged ...
-  #createPolygon() {
-    const points = [];
-    const rad = Math.hypot(this.width, this.height) / 2;
-    const alpha = Math.atan2(this.width, this.height);
-    points.push({
-      x: this.x - Math.sin(this.angle - alpha) * rad,
-      y: this.y - Math.cos(this.angle - alpha) * rad,
-    });
-    points.push({
-      x: this.x - Math.sin(this.angle + alpha) * rad,
-      y: this.y - Math.cos(this.angle + alpha) * rad,
-    });
-    points.push({
-      x: this.x - Math.sin(Math.PI + this.angle - alpha) * rad,
-      y: this.y - Math.cos(Math.PI + this.angle - alpha) * rad,
-    });
-    points.push({
-      x: this.x - Math.sin(Math.PI + this.angle + alpha) * rad,
-      y: this.y - Math.cos(Math.PI + this.angle + alpha) * rad,
-    });
-    return points;
-  }
+  // This method is now ONLY used by the player car
   #move() {
-    if (this.controls.forward) {
+    /* ... unchanged ... */ if (this.controls.forward) {
       this.speed += this.acceleration;
     }
     if (this.controls.reverse) {
@@ -105,6 +113,58 @@ class Car {
     }
     this.x -= Math.sin(this.angle) * this.speed;
     this.y -= Math.cos(this.angle) * this.speed;
+  }
+
+  // All other methods and helper functions are unchanged
+  #findClosestPathIndex(path) {
+    let closestDist = Infinity;
+    let closestIndex = 0;
+    for (let i = 0; i < path.length; i++) {
+      const dist = Math.hypot(this.x - path[i].x, this.y - path[i].y);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestIndex = i;
+      }
+    }
+    return closestIndex;
+  }
+  #assessDamage(roadBorders, traffic) {
+    for (let i = 0; i < roadBorders.length; i++) {
+      if (polyIntersectsPolyline(this.polygon, roadBorders[i])) {
+        return true;
+      }
+    }
+    for (let j = 0; j < traffic.length; j++) {
+      if (
+        this != traffic[j] &&
+        polysIntersect(this.polygon, traffic[j].polygon)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+  #createPolygon() {
+    const points = [];
+    const rad = Math.hypot(this.width, this.height) / 2;
+    const alpha = Math.atan2(this.width, this.height);
+    points.push({
+      x: this.x - Math.sin(this.angle - alpha) * rad,
+      y: this.y - Math.cos(this.angle - alpha) * rad,
+    });
+    points.push({
+      x: this.x - Math.sin(this.angle + alpha) * rad,
+      y: this.y - Math.cos(this.angle + alpha) * rad,
+    });
+    points.push({
+      x: this.x - Math.sin(Math.PI + this.angle - alpha) * rad,
+      y: this.y - Math.cos(Math.PI + this.angle - alpha) * rad,
+    });
+    points.push({
+      x: this.x - Math.sin(Math.PI + this.angle + alpha) * rad,
+      y: this.y - Math.cos(Math.PI + this.angle + alpha) * rad,
+    });
+    return points;
   }
   draw(ctx, color, drawPolygon = false) {
     if (this.damaged) {
@@ -138,9 +198,8 @@ class Car {
     }
   }
 }
-
-// This is the old function, still needed for car-on-car collisions
 function polysIntersect(poly1, poly2) {
+  if (!poly1 || !poly2) return false;
   for (let i = 0; i < poly1.length; i++) {
     for (let j = 0; j < poly2.length; j++) {
       const touch = getIntersection(
@@ -156,17 +215,15 @@ function polysIntersect(poly1, poly2) {
   }
   return false;
 }
-
-// NEW FUNCTION: Checks a polygon against an open line
 function polyIntersectsPolyline(polygon, polyline) {
+  if (!polygon) return false;
   for (let i = 0; i < polygon.length; i++) {
-    // Note: The loop for the polyline only goes to length-2 to get segments
     for (let j = 0; j < polyline.length - 1; j++) {
       const touch = getIntersection(
         polygon[i],
-        polygon[(i + 1) % polygon.length], // Car segment
+        polygon[(i + 1) % polygon.length],
         polyline[j],
-        polyline[j + 1] // Road border segment
+        polyline[j + 1]
       );
       if (touch) {
         return true;
