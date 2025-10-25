@@ -6,7 +6,6 @@ class Road {
       { x: x, y: 500 },
       { x: x, y: 100 },
     ];
-
     this.roadPolygon = [];
     this.borders = [];
     this.lanePaths = [];
@@ -23,8 +22,6 @@ class Road {
       this.#generateRoad();
     }
   }
-
-  // --- THIS IS THE CORRECTED FUNCTION NAME ---
   getLaneStartPose(laneIndex) {
     const startPos = this.getLaneCenter(laneIndex);
     if (this.lanePaths.length === 0 || this.lanePaths[laneIndex].length < 2) {
@@ -35,11 +32,24 @@ class Road {
     const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) + Math.PI / 2;
     return { x: startPos.x, y: startPos.y, angle: angle };
   }
-  // ---------------------------------------------
-
   getLanePath(laneIndex) {
     return this.lanePaths[laneIndex];
   }
+
+  // --- THIS IS THE MISSING FUNCTION, NOW RESTORED ---
+  getLanePathLength(laneIndex) {
+    const path = this.lanePaths[laneIndex];
+    if (!path || path.length < 2) return 0;
+    let length = 0;
+    for (let i = 1; i < path.length; i++) {
+      length += Math.hypot(
+        path[i].x - path[i - 1].x,
+        path[i].y - path[i - 1].y
+      );
+    }
+    return length;
+  }
+  // --------------------------------------------------------
 
   #generateRoad() {
     const { left: leftControlPoints } = this.#generateSplineControlPoints(
@@ -50,11 +60,9 @@ class Road {
       this.points,
       -this.width / 2
     );
-
     const leftBorder = this.#generateSplinePath(leftControlPoints, 15);
     const rightBorder = this.#generateSplinePath(rightControlPoints, 15);
     this.borders = [leftBorder, rightBorder];
-
     this.lanePaths = [];
     for (let i = 0; i < this.laneCount; i++) {
       const laneWidth = this.width / this.laneCount;
@@ -69,7 +77,6 @@ class Road {
       );
       this.lanePaths.push(this.#generateSplinePath(laneControlPoints, 15));
     }
-
     if (leftBorder.length > 0 && rightBorder.length > 0) {
       const startCap = [leftBorder[0], rightBorder[0]];
       const endCap = [
@@ -162,15 +169,11 @@ class Road {
       }
     }
     ctx.fill();
-
-    // UPDATED: The lines now correctly use the pre-calculated lane splines
     ctx.setLineDash([20, 20]);
     ctx.strokeStyle = "white";
     ctx.lineWidth = 5;
-    // Draw the two inner lane lines
     if (this.laneCount > 1) {
       for (let i = 1; i < this.laneCount; i++) {
-        // We need to generate the dividing lines, which are between the lanes.
         const laneWidth = this.width / this.laneCount;
         const offset = -this.width / 2 + laneWidth * i;
         const { left: lineControlPoints } = this.#generateSplineControlPoints(
@@ -178,7 +181,6 @@ class Road {
           offset
         );
         const linePath = this.#generateSplinePath(lineControlPoints, 15);
-
         ctx.beginPath();
         if (linePath.length > 0) {
           ctx.moveTo(linePath[0].x, linePath[0].y);
@@ -189,7 +191,6 @@ class Road {
         ctx.stroke();
       }
     }
-
     ctx.setLineDash([]);
     this.borders.forEach((border) => {
       ctx.beginPath();

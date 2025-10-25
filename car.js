@@ -12,43 +12,57 @@ class Car {
     this.damaged = false;
     this.controls = new Controls(controlType);
     this.controls.type = controlType;
-    // NEW: Progress along the path in pixels
     this.pathProgress = 0;
-    if (controlType !== "DUMMY") {
-      this.sensor = new Sensor(this);
-      // Physics properties are now ONLY for the player car
+
+    // Player car has a full sensor array
+    if (controlType === "PLAYER") {
+      this.sensor = new Sensor(this); // Default is 16 rays
       this.acceleration = 0.2;
       this.friction = 0.05;
+    }
+    // DUMMY cars now get a single forward-facing sensor
+    if (controlType === "DUMMY") {
+      this.sensor = new Sensor(this, 1);
+      this.stopDistance = height / 2 + 15; // Stop when something is 15px in front
     }
   }
 
   update(roadBorders, traffic, mode = "DRIVING", lanePath = null) {
     if (!this.damaged) {
-      // Player car uses physics-based movement
-      if (this.controls.type !== "DUMMY") {
+      if (this.controls.type === "PLAYER") {
         if (mode === "DRIVING") {
           this.#move();
         }
-      }
-      // Traffic cars are snapped to their path
-      else if (lanePath && lanePath.length > 0) {
+      } else if (
+        this.controls.type === "DUMMY" &&
+        lanePath &&
+        lanePath.length > 0
+      ) {
+        // Dummy cars must update their sensors BEFORE deciding to move
+        this.sensor.update(roadBorders, [...traffic, car]);
         this.#snapToLane(lanePath);
       }
-
-      // Polygon and damage checks are still needed for all cars
       this.polygon = this.#createPolygon();
       this.damaged = this.#assessDamage(roadBorders, traffic);
     }
-
-    // Only player car has sensors
-    if (this.sensor) {
+    // Player car sensors update here
+    if (this.controls.type === "PLAYER" && this.sensor) {
       this.sensor.update(roadBorders, traffic);
     }
   }
 
-  // NEW: The logic to snap a car to a pre-calculated path
+  // UPDATED: DUMMY cars now stop based on their sensor
   #snapToLane(lanePath) {
-    this.pathProgress += this.speed;
+    let stopped = false;
+    const sensorReading = this.sensor.readings[0];
+    if (sensorReading && sensorReading.offset < this.stopDistance) {
+      stopped = true;
+    }
+
+    // Only move forward if not stopped
+    if (!stopped) {
+      this.pathProgress += this.speed;
+    }
 
     let currentPointIndex = 0;
     let dist = 0;
@@ -62,24 +76,50 @@ class Car {
       );
       currentPointIndex++;
     }
-
     if (currentPointIndex >= lanePath.length - 1) {
       this.toRemove = true;
       return;
     }
-
-    const p1 = lanePath[currentPointIndex - 1];
+    const p1 = lanePath[currentPointIndex - 1] || lanePath[0];
     const p2 = lanePath[currentPointIndex];
-
-    // Set the car's position directly on the path segment
     this.x = p2.x;
     this.y = p2.y;
-
-    // Set the car's angle to match the path segment's direction
-    this.angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) + Math.PI / 2;
+    this.angle = -(Math.atan2(p2.y - p1.y, p2.x - p1.x) - Math.PI / 2);
   }
 
-  // This method is now ONLY used by the player car
+  // UPDATED: New, robust collision logic
+  #assessDamage(roadBorders, allOtherCars) {
+    // Check against borders
+    for (let i = 0; i < roadBorders.length; i++) {
+      if (polyIntersectsPolyline(this.polygon, roadBorders[i])) {
+        if (this.controls.type === "DUMMY") {
+          this.toRemove = true;
+        }
+        return true;
+      }
+    }
+    // Check against other cars
+    for (let i = 0; i < allOtherCars.length; i++) {
+      const otherCar = allOtherCars[i];
+      if (this === otherCar) {
+        continue;
+      }
+
+      if (polysIntersect(this.polygon, otherCar.polygon)) {
+        // If a DUMMY car hits anything (that isn't the PLAYER)...
+        if (
+          this.controls.type === "DUMMY" &&
+          otherCar.controls.type !== "PLAYER"
+        ) {
+          this.toRemove = true;
+        }
+        // Damage is always applied in any car-on-car collision
+        return true;
+      }
+    }
+    return false;
+  }
+
   #move() {
     /* ... unchanged ... */ if (this.controls.forward) {
       this.speed += this.acceleration;
@@ -105,47 +145,17 @@ class Car {
     if (this.speed !== 0) {
       const flip = this.speed > 0 ? 1 : -1;
       if (this.controls.left) {
-        this.angle += 0.03 * flip;
+        this.angle -= 0.03 * flip;
       }
       if (this.controls.right) {
-        this.angle -= 0.03 * flip;
+        this.angle += 0.03 * flip;
       }
     }
     this.x -= Math.sin(this.angle) * this.speed;
     this.y -= Math.cos(this.angle) * this.speed;
   }
-
-  // All other methods and helper functions are unchanged
-  #findClosestPathIndex(path) {
-    let closestDist = Infinity;
-    let closestIndex = 0;
-    for (let i = 0; i < path.length; i++) {
-      const dist = Math.hypot(this.x - path[i].x, this.y - path[i].y);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestIndex = i;
-      }
-    }
-    return closestIndex;
-  }
-  #assessDamage(roadBorders, traffic) {
-    for (let i = 0; i < roadBorders.length; i++) {
-      if (polyIntersectsPolyline(this.polygon, roadBorders[i])) {
-        return true;
-      }
-    }
-    for (let j = 0; j < traffic.length; j++) {
-      if (
-        this != traffic[j] &&
-        polysIntersect(this.polygon, traffic[j].polygon)
-      ) {
-        return true;
-      }
-    }
-    return false;
-  }
   #createPolygon() {
-    const points = [];
+    /* ... unchanged ... */ const points = [];
     const rad = Math.hypot(this.width, this.height) / 2;
     const alpha = Math.atan2(this.width, this.height);
     points.push({
@@ -167,7 +177,7 @@ class Car {
     return points;
   }
   draw(ctx, color, drawPolygon = false) {
-    if (this.damaged) {
+    /* ... unchanged ... */ if (this.damaged) {
       ctx.fillStyle = "red";
     } else {
       ctx.fillStyle = color;
@@ -199,7 +209,7 @@ class Car {
   }
 }
 function polysIntersect(poly1, poly2) {
-  if (!poly1 || !poly2) return false;
+  /* ... unchanged ... */ if (!poly1 || !poly2) return false;
   for (let i = 0; i < poly1.length; i++) {
     for (let j = 0; j < poly2.length; j++) {
       const touch = getIntersection(
@@ -216,7 +226,7 @@ function polysIntersect(poly1, poly2) {
   return false;
 }
 function polyIntersectsPolyline(polygon, polyline) {
-  if (!polygon) return false;
+  /* ... unchanged ... */ if (!polygon) return false;
   for (let i = 0; i < polygon.length; i++) {
     for (let j = 0; j < polyline.length - 1; j++) {
       const touch = getIntersection(

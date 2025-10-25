@@ -14,10 +14,8 @@ resizeCanvas();
 
 let mode = "EDITING";
 const road = new Road(canvas.width / 2, 200, 3);
-
 const carHeight = 50;
 const SPAWN_PADDING = 5;
-
 let startPose = road.getLaneStartPose(1);
 let offsetX = Math.sin(startPose.angle) * (carHeight / 2 + SPAWN_PADDING);
 let offsetY = -Math.cos(startPose.angle) * (carHeight / 2 + SPAWN_PADDING);
@@ -31,9 +29,11 @@ const car = new Car(
 car.angle = startPose.angle;
 
 let traffic = [];
-const MAX_TRAFFIC = 10;
+let MAX_TRAFFIC = 10;
+const CAR_DENSITY = 300;
 const TRAFFIC_SPAWN_RATE = 0.02;
 const TRAFFIC_SPEED = 2.0;
+const SPAWN_SAFE_DISTANCE = 80;
 
 const showPolygonCheckbox = document.getElementById("showPolygon");
 const drivingBtn = document.getElementById("drivingBtn");
@@ -55,7 +55,6 @@ editingBtn.addEventListener("click", () => {
   drivingBtn.classList.remove("active");
   traffic = [];
 });
-
 resetBtn.addEventListener("click", resetCar);
 function resetCar() {
   const newStartPose = road.getLaneStartPose(1);
@@ -63,13 +62,18 @@ function resetCar() {
     Math.sin(newStartPose.angle) * (carHeight / 2 + SPAWN_PADDING);
   const offsetY =
     -Math.cos(newStartPose.angle) * (carHeight / 2 + SPAWN_PADDING);
-
   car.x = newStartPose.x + offsetX;
   car.y = newStartPose.y + offsetY;
   car.angle = newStartPose.angle;
   car.speed = 0;
   car.damaged = false;
 }
+
+function updateMaxTraffic() {
+  const roadLength = road.getLanePathLength(1);
+  MAX_TRAFFIC = Math.floor(roadLength / CAR_DENSITY);
+}
+updateMaxTraffic();
 
 let isDragging = false;
 let mouse = { x: 0, y: 0 };
@@ -104,6 +108,7 @@ function handleMouseDown(event) {
   if (dist < draggerSize / zoom) {
     if (event.button === 2) {
       road.addPoint(mouse.x, mouse.y);
+      updateMaxTraffic();
     } else {
       isDragging = true;
       dragTarget = mouse;
@@ -120,38 +125,50 @@ function handleMouseMove(event) {
 animate();
 
 function animate() {
+  // --- THIS IS THE CORRECTED STRUCTURE ---
+  // ALWAYS update cars to calculate their state (polygons, sensors) for drawing.
+  // The internal logic of car.update() already handles not moving them in EDIT mode.
   for (let i = 0; i < traffic.length; i++) {
     const lanePath = road.getLanePath(traffic[i].lane);
-    traffic[i].update(road.borders, traffic, "DRIVING", lanePath);
+    traffic[i].update(road.borders, [...traffic, car], "DRIVING", lanePath);
   }
   car.update(road.borders, traffic, mode);
 
+  // Only run spawning/despawning and other GAMEPLAY logic in DRIVING mode
   if (mode === "DRIVING") {
     traffic = traffic.filter((c) => !c.toRemove);
     if (traffic.length < MAX_TRAFFIC && Math.random() < TRAFFIC_SPAWN_RATE) {
       const laneIndex = Math.floor(Math.random() * road.laneCount);
       const spawnPose = road.getLaneStartPose(laneIndex);
-
-      // --- THIS IS THE CORRECTED SPAWNING LOGIC ---
-      const startOffset = carHeight / 2 + SPAWN_PADDING;
-      const offsetX = Math.sin(spawnPose.angle) * startOffset;
-      const offsetY = -Math.cos(spawnPose.angle) * startOffset;
-
-      const newCar = new Car(
-        spawnPose.x + offsetX,
-        spawnPose.y + offsetY,
-        30,
-        carHeight,
-        "DUMMY",
-        TRAFFIC_SPEED
-      );
-      newCar.angle = spawnPose.angle;
-      newCar.lane = laneIndex;
-      newCar.speed = TRAFFIC_SPEED;
-      // Set the initial progress to match the padded offset
-      newCar.pathProgress = startOffset;
-      traffic.push(newCar);
-      // ---------------------------------------------
+      let spawnPointClear = true;
+      for (let i = 0; i < traffic.length; i++) {
+        const dist = Math.hypot(
+          traffic[i].x - spawnPose.x,
+          traffic[i].y - spawnPose.y
+        );
+        if (dist < SPAWN_SAFE_DISTANCE) {
+          spawnPointClear = false;
+          break;
+        }
+      }
+      if (spawnPointClear) {
+        const startOffset = carHeight / 2 + SPAWN_PADDING;
+        const offsetX = Math.sin(spawnPose.angle) * startOffset;
+        const offsetY = -Math.cos(spawnPose.angle) * startOffset;
+        const newCar = new Car(
+          spawnPose.x + offsetX,
+          spawnPose.y + offsetY,
+          30,
+          carHeight,
+          "DUMMY",
+          TRAFFIC_SPEED
+        );
+        newCar.angle = spawnPose.angle;
+        newCar.lane = laneIndex;
+        newCar.speed = TRAFFIC_SPEED;
+        newCar.pathProgress = startOffset;
+        traffic.push(newCar);
+      }
     }
   }
 
@@ -173,6 +190,7 @@ function animate() {
     }
     if (angleIsValid) {
       road.moveLastPoint(newPos.x, newPos.y);
+      updateMaxTraffic();
     }
   }
 
