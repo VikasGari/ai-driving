@@ -76,8 +76,11 @@ class PathUtils {
 class TrafficCar {
     constructor(x, y, heading = 0, color = 'gray', width = 16, height = 36) {
         this.x = x; this.y = y; this.heading = heading;
-        this.speed = 1.6 + Math.random() * 0.8;
-        this.maxSpeed = this.speed * 1.1;
+        // Base/desired speed and limits (slower defaults to reduce short-segment bias)
+        this.desiredSpeed = 0.9 + Math.random() * 0.6; // ~0.9..1.5
+        this.speed = this.desiredSpeed;
+        this.maxSpeed = this.desiredSpeed * 1.2;
+        this.minSpeed = Math.max(0.08, this.desiredSpeed * 0.2);
         this.width = width; this.height = height;
         this.path = [];
         this.segmentIndex = 0; // index into path points
@@ -89,7 +92,8 @@ class TrafficCar {
         this.targetSpeed = this.maxSpeed;
         this.frontRay = Infinity;
         this.rearRay = Infinity;
-        this.accelGain = 0.6; // responsiveness factor
+        this.accelGain = 0.6; // responsiveness factor for ray-based terms
+        this.correctorGain = 0.25; // restorative gain toward desiredSpeed
         this.spawnAge = 0; // frames since spawn
         this.junctionCooldown = 0; // seconds until next junction re-route allowed
     }
@@ -130,9 +134,11 @@ class TrafficCar {
         const safeRear = this.safeGap * 0.8;
         const slowTerm = isFinite(front) ? Math.max(0, (safeFront - front) / safeFront) : 0;
         const speedTerm = isFinite(rear) ? Math.max(0, (safeRear - rear) / safeRear) : 0;
-        const accel = this.accelGain * (speedTerm - slowTerm);
-        // integrate speed
-        this.speed = Math.max(0, Math.min(this.maxSpeed, this.speed + accel * dt));
+        const accelRay = this.accelGain * (speedTerm - slowTerm);
+        const accelRestore = this.correctorGain * (this.desiredSpeed - this.speed);
+        const accel = accelRay + accelRestore;
+        // integrate speed with bounds
+        this.speed = Math.max(this.minSpeed, Math.min(this.maxSpeed, this.speed + accel * dt));
         this.targetSpeed = this.speed;
         this.stopReason = slowTerm > 0.5 && this.speed < 0.2 ? 'car_ahead' : 'none';
         let move = this.speed * dt;
@@ -353,8 +359,10 @@ class TrafficManager {
     }
 
     update(dt) {
-        // Simple spawning: try to spawn if under max cars
-        if (this.cars.length < this.maxCars && Math.random() < this.spawnRate) {
+        // Simple spawning with capacity cap: at most 0.75 cars per tile
+        const totalTiles = Math.max(1, this.tileEditor.tiles.size);
+        const capacity = 0.75 * totalTiles;
+        if (this.cars.length < Math.min(this.maxCars, capacity) && Math.random() < this.spawnRate) {
             this.spawnCar();
         }
         
@@ -422,12 +430,19 @@ class TrafficManager {
                     return nt && !nt.isTurn;
                 });
             if (outNbs.length === 0) continue;
-            // Choose the least populated segment
-            let best = null; let bestCnt = Infinity;
+            // Choose the least dense segment (cars per tile), fall back to count
+            let best = null; let bestScore = Infinity;
             for (const n of outNbs) {
                 const segId = this.tileKeyToSegmentId.get(this.tileEditor.getTileKey(n.gx, n.gy));
-                const cnt = segId != null ? (segmentCounts.get(segId) || 0) : 0;
-                if (cnt < bestCnt) { bestCnt = cnt; best = n; }
+                let score = 0;
+                if (segId != null) {
+                    const tiles = this.segments[segId] ? this.segments[segId].tiles.size : 1;
+                    const cnt = segmentCounts.get(segId) || 0;
+                    score = cnt / Math.max(1, tiles); // density
+                } else {
+                    score = 0; // unknown segment, treat as empty
+                }
+                if (score < bestScore) { bestScore = score; best = n; }
             }
             if (best) {
                 const nextCenter = PathUtils.canvasCenterOf(this.tileEditor, best.gx, best.gy);
@@ -441,7 +456,7 @@ class TrafficManager {
                         car.segmentIndex = 0;
                         car.progress = 0;
                     }
-                    car.junctionCooldown = 0.6; // small delay before allowing another reroute
+                    car.junctionCooldown = 1.5; // increased delay for slower cars
                 }
             }
         }
@@ -460,20 +475,22 @@ class TrafficManager {
             let extended = false;
             if (prev) {
                 const gp = centerToGrid(prev);
-                // neighbors from current tile within allowed edges
-                const nbs = PathUtils.neighborsFor(this.tileEditor, gx, gy, this.allowedEdges) || [];
+                // neighbors from current tile (unfiltered), we will enforce allowedEdges for non-turn steps
+                const nbsAll = PathUtils.neighborsFor(this.tileEditor, gx, gy) || [];
                 // prefer continuing direction (avoid going back to prev)
-                const candidates = nbs.filter(n => !(n.gx === gp.gx && n.gy === gp.gy));
-                // If next is a junction, choose least-populated outgoing after passing through junction
+                const candidates = nbsAll.filter(n => !(n.gx === gp.gx && n.gy === gp.gy));
+                // If next is a junction, we can always go to junction center (inbound allowed),
+                // but for non-turn steps, require allowed edge
                 if (candidates.length > 0) {
-                    // Sort to prefer non-turn tiles first
                     const nonTurn = candidates.filter(n => {
                         const t = this.tileEditor.tiles.get(this.tileEditor.getTileKey(n.gx, n.gy));
-                        return t && !t.isTurn;
+                        if (!t || t.isTurn) return false;
+                        const edgeKey = `${gx},${gy}:${n.dir}`;
+                        return this.allowedEdges.has(edgeKey);
                     });
                     const turnTiles = candidates.filter(n => {
                         const t = this.tileEditor.tiles.get(this.tileEditor.getTileKey(n.gx, n.gy));
-                        return t && t.isTurn;
+                        return t && t.isTurn; // allow inbound to junction regardless of allowedEdges
                     });
                     if (nonTurn.length > 0) {
                         const n = nonTurn[0];
@@ -495,16 +512,24 @@ class TrafficManager {
                                     return t && !t.isTurn;
                                 });
                             if (outNbs.length > 0) {
-                                let best = null; let bestCnt = Infinity;
+                                let best = null; let bestScore = Infinity;
                                 for (const n of outNbs) {
                                     const segId = this.tileKeyToSegmentId.get(this.tileEditor.getTileKey(n.gx, n.gy));
-                                    const cnt = segId != null ? (segmentCounts.get(segId) || 0) : 0;
-                                    if (cnt < bestCnt) { bestCnt = cnt; best = n; }
+                                    let score = 0;
+                                    if (segId != null) {
+                                        const tiles = this.segments[segId] ? this.segments[segId].tiles.size : 1;
+                                        const cnt = segmentCounts.get(segId) || 0;
+                                        score = cnt / Math.max(1, tiles); // density
+                                    } else {
+                                        score = 0;
+                                    }
+                                    if (score < bestScore) { bestScore = score; best = n; }
                                 }
                                 if (best) {
                                     const nc2 = PathUtils.canvasCenterOf(this.tileEditor, best.gx, best.gy);
                                     if (nc2) {
                                         car.path.push(jc, nc2);
+                                        car.junctionCooldown = 1.5;
                                         extended = true;
                                     }
                                 }
