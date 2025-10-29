@@ -47,10 +47,50 @@ const drivingBtn = document.getElementById("drivingBtn");
 const editingBtn = document.getElementById("editingBtn");
 const resetBtn = document.getElementById("resetBtn");
 const zoomSlider = document.getElementById("zoomSlider");
+const spawnRateSlider = document.getElementById("spawnRateSlider");
+const spawnRateValue = document.getElementById("spawnRateValue");
+const saveMapBtn = document.getElementById("saveMapBtn");
+const loadMapBtn = document.getElementById("loadMapBtn");
+const mapFileInput = document.getElementById("mapFileInput");
 zoomSlider.value = zoom;
 zoomSlider.addEventListener("input", (event) => {
   zoom = parseFloat(event.target.value);
 });
+if (spawnRateSlider && spawnRateValue) {
+  spawnRateValue.textContent = spawnRateSlider.value;
+  spawnRateSlider.addEventListener("input", () => {
+    spawnRateValue.textContent = spawnRateSlider.value;
+    if (trafficManager) trafficManager.spawnRate = parseFloat(spawnRateSlider.value) / 100;
+  });
+}
+
+// Map save/load functionality
+if (saveMapBtn) {
+  saveMapBtn.addEventListener("click", () => {
+    if (useTilemap && tilemapEditor) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `map_${timestamp}.json`;
+      tilemapEditor.downloadMap(filename);
+    }
+  });
+}
+
+if (loadMapBtn) {
+  loadMapBtn.addEventListener("click", () => {
+    if (mapFileInput) {
+      mapFileInput.click();
+    }
+  });
+}
+
+if (mapFileInput) {
+  mapFileInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (file && useTilemap && tilemapEditor) {
+      tilemapEditor.loadMapFromFile(file);
+    }
+  });
+}
 function updateTilePropsUI() {
   const el = document.getElementById("tileProps");
   if (!useTilemap || !el) return;
@@ -73,16 +113,63 @@ function updateTilePropsUI() {
   }
   el.innerHTML = html;
 }
+
+function updateCarPropsUI(car) {
+  const el = document.getElementById("carProps");
+  if (!el) return;
+  if (!car) {
+    el.textContent = "No car selected";
+    return;
+  }
+  el.innerHTML = `Position: (${car.x.toFixed(1)}, ${car.y.toFixed(1)})<br>` +
+    `Heading: ${(car.heading * 180 / Math.PI).toFixed(0)}°<br>` +
+    `Speed: ${car.speed.toFixed(2)} (target ${car.targetSpeed.toFixed(2)})<br>` +
+    `Reason: ${car.stopReason}<br>` +
+    `FrontRay: ${isFinite(car.frontRay) ? car.frontRay.toFixed(1) : '∞'} px<br>` +
+    `RearRay: ${isFinite(car.rearRay) ? car.rearRay.toFixed(1) : '∞'} px`;
+}
+let trafficManager = null;
 drivingBtn.addEventListener("click", () => {
   mode = "DRIVING";
   drivingBtn.classList.add("active");
   editingBtn.classList.remove("active");
+  if (useTilemap) {
+    // UI: hide tile panel, show car panel; hide tile buttons/selection
+    const tileInfo = document.getElementById("tile-info");
+    const carInfo = document.getElementById("car-info");
+    if (tileInfo) tileInfo.style.display = 'none';
+    if (carInfo) carInfo.style.display = '';
+    tilemapEditor.showButtons = false;
+    tilemapEditor.showTileSelection = false;
+    trafficManager = new TrafficManager(tilemapEditor);
+    if (spawnRateSlider) trafficManager.spawnRate = parseFloat(spawnRateSlider.value) / 100; // Convert to probability
+    trafficManager.reset();
+    // Place player car at first tile center with orientation east by default
+    const firstKey = tilemapEditor.tiles.keys().next().value;
+    if (firstKey) {
+      const t = tilemapEditor.tiles.get(firstKey);
+      const c = t.getCenter();
+      car.x = c.x; car.y = c.y;
+      // car angle from tile baseOrientationAngle (Cartesian) to car physics angle
+      car.angle = t.baseOrientationAngle - Math.PI / 2;
+      car.speed = 0; car.damaged = false;
+    }
+  }
 });
 editingBtn.addEventListener("click", () => {
   mode = "EDITING";
   editingBtn.classList.add("active");
   drivingBtn.classList.remove("active");
   traffic = [];
+  trafficManager = null;
+  // UI: show tile panel, hide car panel; show tile buttons/selection
+  const tileInfo = document.getElementById("tile-info");
+  const carInfo = document.getElementById("car-info");
+  if (tileInfo) tileInfo.style.display = '';
+  if (carInfo) carInfo.style.display = 'none';
+  tilemapEditor.showButtons = true;
+  tilemapEditor.showTileSelection = true;
+  updateCarPropsUI(null);
 });
 resetBtn.addEventListener("click", resetCar);
 function resetCar() {
@@ -156,6 +243,11 @@ function addEventListeners() {
         updateTilePropsUI();
       }
     }
+    if (mode === "DRIVING" && useTilemap && e.button === 0 && trafficManager) {
+      const m = getMousePos(e);
+      const selected = trafficManager.selectCarAt(m.x, m.y);
+      updateCarPropsUI(selected);
+    }
   });
   window.addEventListener("mouseup", () => { panning = false; });
   window.addEventListener("mousemove", (e) => {
@@ -222,17 +314,18 @@ function animate() {
   // --- THIS IS THE CORRECTED STRUCTURE ---
   // ALWAYS update cars to calculate their state (polygons, sensors) for drawing.
   // The internal logic of car.update() already handles not moving them in EDIT mode.
-  for (let i = 0; i < traffic.length; i++) {
-    const lanePath = road.getLanePath(traffic[i].lane);
-    traffic[i].update(road.borders, [...traffic, car], "DRIVING", lanePath);
+  if (!useTilemap) {
+    for (let i = 0; i < traffic.length; i++) {
+      const lanePath = road.getLanePath(traffic[i].lane);
+      traffic[i].update(road.borders, [...traffic, car], "DRIVING", lanePath);
+    }
+    car.update(road.borders, traffic, mode);
   }
-  car.update(road.borders, traffic, mode);
 
-  // Agent control in DRIVING mode
-  if (mode === "DRIVING") {
+  // Agent control in DRIVING mode (disabled when tilemap traffic is active)
+  if (mode === "DRIVING" && !useTilemap) {
     const obs = obsBuilder.build(traffic, 1);
     const action = agent.act(obs, "NORMAL");
-    // Map action: steer and accel
     const steer = AgentUtils.clamp(action.steer, -1, 1);
     const accel = AgentUtils.clamp(action.accel, -1, 1);
     car.controls.left = steer < -0.2;
@@ -242,7 +335,7 @@ function animate() {
   }
 
   // Only run spawning/despawning and other GAMEPLAY logic in DRIVING mode
-  if (mode === "DRIVING") {
+  if (mode === "DRIVING" && !useTilemap) {
     traffic = traffic.filter((c) => !c.toRemove);
     if (traffic.length < MAX_TRAFFIC && Math.random() < TRAFFIC_SPAWN_RATE) {
       const laneIndex = Math.floor(Math.random() * road.laneCount);
@@ -284,7 +377,7 @@ function animate() {
     }
   }
 
-  if (isDragging && dragTarget) {
+  if (!useTilemap && isDragging && dragTarget) {
     const lastPoint = road.points[road.points.length - 1];
     const newX = lerp(lastPoint.x, dragTarget.x, dragSmoothingFactor);
     const newY = lerp(lastPoint.y, dragTarget.y, dragSmoothingFactor);
@@ -332,12 +425,19 @@ function animate() {
   } else {
     road.draw(ctx);
   }
+  if (mode === "DRIVING" && useTilemap && trafficManager) {
+    // Update traffic manager with a fixed timestep approximation
+    trafficManager.update(1); // dt ~ 1 frame units; speed scaled internally
+    trafficManager.draw(ctx);
+  }
   for (let i = 0; i < traffic.length; i++) {
     traffic[i].draw(ctx, "gray", showPolygonCheckbox.checked);
   }
-  car.draw(ctx, "blue", showPolygonCheckbox.checked);
+  if (mode === "DRIVING" && !useTilemap) {
+    car.draw(ctx, "blue", showPolygonCheckbox.checked);
+  }
 
-  if (mode === "EDITING") {
+  if (mode === "EDITING" && !useTilemap) {
     const lastPoint = road.points[road.points.length - 1];
     ctx.beginPath();
     ctx.arc(lastPoint.x, lastPoint.y, draggerSize / zoom, 0, Math.PI * 2);

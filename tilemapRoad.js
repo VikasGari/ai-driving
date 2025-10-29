@@ -119,23 +119,30 @@ class RoadTile {
         }
         ctx.stroke();
 
-        // Draw buttons (four directions)
-        const buttons = this.getButtons(window.__tileEditorRef || null);
-        const buttonRadius = 8;
-        for (const b of buttons) {
-            if (!b.active) continue;
-            ctx.beginPath();
-            ctx.arc(b.x, b.y, buttonRadius, 0, Math.PI * 2);
-            ctx.fillStyle = "#fff";
-            ctx.fill();
-            ctx.strokeStyle = "#000";
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.fillStyle = "#000";
-            ctx.font = "12px Arial";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(b.icon, b.x, b.y);
+        // Draw buttons (four directions) only if editor.showButtons is true
+        const editor = window.__tileEditorRef || null;
+        if (editor && editor.showButtons) {
+            let buttons = this.getButtons(editor);
+            // If base tile: only allow base forward button
+            if (editor.baseKey === editor.getTileKey(this.gridX, this.gridY)) {
+                buttons = buttons.filter(b => b.key === editor.baseForwardDir);
+            }
+            const buttonRadius = 8;
+            for (const b of buttons) {
+                if (!b.active) continue;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, buttonRadius, 0, Math.PI * 2);
+                ctx.fillStyle = "#fff";
+                ctx.fill();
+                ctx.strokeStyle = "#000";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.fillStyle = "#000";
+                ctx.font = "12px Arial";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(b.icon, b.x, b.y);
+            }
         }
     }
 }
@@ -148,9 +155,15 @@ class TilemapRoadEditor {
         // expose self for tile draw neighbor checks
         window.__tileEditorRef = this;
         this.selectedKey = null;
-        
+        this.showButtons = true;
+        this.showTileSelection = true;
+        this.baseKey = null;
+        this.baseForwardDir = 'top';
+
         // Start with one tile at origin
         this.addTile(0, 0, 0);
+        this.baseKey = this.getTileKey(0, 0);
+        this.updateBaseForwardFromTile();
     }
 
     getTileKey(x, y) {
@@ -260,8 +273,8 @@ class TilemapRoadEditor {
             tile.draw(ctx);
         }
 
-        // Highlight selected tile
-        if (this.selectedKey && this.tiles.has(this.selectedKey)) {
+        // Highlight selected tile only when selection enabled
+        if (this.showTileSelection && this.selectedKey && this.tiles.has(this.selectedKey)) {
             const t = this.tiles.get(this.selectedKey);
             ctx.save();
             ctx.strokeStyle = "#ffd54f";
@@ -281,6 +294,107 @@ class TilemapRoadEditor {
             maxY = Math.max(maxY, tile.worldY + tile.tileSize);
         }
         return { minX, minY, maxX, maxY };
+    }
+
+    // Save map to JSON string
+    saveMap() {
+        const mapData = {
+            tileSize: this.tileSize,
+            baseKey: this.baseKey,
+            baseForwardDir: this.baseForwardDir,
+            tiles: []
+        };
+        
+        for (const tile of this.tiles.values()) {
+            mapData.tiles.push({
+                gridX: tile.gridX,
+                gridY: tile.gridY,
+                baseOrientationAngle: tile.baseOrientationAngle,
+                borders: { ...tile.borders },
+                buttons: { ...tile.buttons },
+                isLShape: tile.isLShape,
+                isTurn: tile.isTurn
+            });
+        }
+        
+        return JSON.stringify(mapData, null, 2);
+    }
+
+    // Load map from JSON string
+    loadMap(jsonString) {
+        try {
+            const mapData = JSON.parse(jsonString);
+            
+            // Clear existing tiles
+            this.tiles.clear();
+            this.selectedKey = null;
+            
+            // Restore properties
+            this.tileSize = mapData.tileSize || 60;
+            this.baseKey = mapData.baseKey || null;
+            this.baseForwardDir = mapData.baseForwardDir || 'right';
+            
+            // Restore tiles
+            for (const tileData of mapData.tiles) {
+                const tile = new RoadTile(
+                    tileData.gridX,
+                    tileData.gridY,
+                    this.tileSize,
+                    tileData.baseOrientationAngle || 0
+                );
+                
+                // Restore properties
+                tile.borders = { ...tileData.borders };
+                tile.buttons = { ...tileData.buttons };
+                tile.isLShape = tileData.isLShape || false;
+                tile.isTurn = tileData.isTurn || false;
+                
+                this.tiles.set(this.getTileKey(tile.gridX, tile.gridY), tile);
+            }
+            
+            // Update adjacent borders and tile flags
+            for (const tile of this.tiles.values()) {
+                this.updateAdjacentBorders(tile.gridX, tile.gridY);
+                this.updateTileFlags(tile.gridX, tile.gridY);
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('Failed to load map:', error);
+            return false;
+        }
+    }
+
+    // Download map as file
+    downloadMap(filename = 'map.json') {
+        const mapJson = this.saveMap();
+        const blob = new Blob([mapJson], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // Load map from file input
+    loadMapFromFile(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const success = this.loadMap(e.target.result);
+            if (success) {
+                console.log('Map loaded successfully');
+                // Trigger UI update if needed
+                if (window.updateTilePropsUI) {
+                    window.updateTilePropsUI();
+                }
+            } else {
+                alert('Failed to load map. Please check the file format.');
+            }
+        };
+        reader.readAsText(file);
     }
 
     updateTileFlags(gridX, gridY) {
@@ -365,5 +479,14 @@ class TilemapRoadEditor {
 
     refreshTileAndNeighbors(gridX, gridY) {
         this.refreshNeighbors(gridX, gridY);
+    }
+
+    updateBaseForwardFromTile() {
+        if (!this.baseKey || !this.tiles.has(this.baseKey)) return;
+        const t = this.tiles.get(this.baseKey);
+        const idx = Coord.snapAngleToCardinalIndexCart(t.baseOrientationAngle);
+        // Map idx to button key: 0:east->right,1:north->top,2:west->left,3:south->bottom
+        const map = ['right','top','left','bottom'];
+        this.baseForwardDir = map[idx];
     }
 }

@@ -15,6 +15,17 @@
                 <button id="drivingBtn" class="mode-btn">Driving Mode</button>
                 <button id="editingBtn" class="mode-btn active">Editing Mode</button>
             </div>
+            <div class="zoom-controls">
+                <label for="spawnRateSlider">Spawn rate (% per frame)</label>
+                <input type="range" id="spawnRateSlider" min="0" max="50" value="10" step="1">
+                <div>Current: <span id="spawnRateValue">10</span>%</div>
+            </div>
+            <div class="map-controls">
+                <h4>Map Controls</h4>
+                <button id="saveMapBtn">Save Map</button>
+                <button id="loadMapBtn">Load Map</button>
+                <input type="file" id="mapFileInput" accept=".json" style="display: none;">
+            </div>
             <hr>
             
             <p>
@@ -46,6 +57,11 @@
                 <h3>Tile Properties</h3>
                 <div id="tileProps">No tile selected</div>
             </div>
+            <hr>
+            <div id="car-info">
+                <h3>Car Properties</h3>
+                <div id="carProps">No car selected</div>
+            </div>
         </div>
         <div id="canvas-container">
             <canvas id="simulationCanvas"></canvas>
@@ -61,6 +77,7 @@
     <script src="roadNetwork.js"></script>
     <script src="tilemapRoad.js"></script>
     <script src="agent.js"></script>
+    <script src="traffic.js"></script>
     <script src="car.js"></script>
     <script src="main.js"></script>
 </body>
