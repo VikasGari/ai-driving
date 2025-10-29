@@ -212,6 +212,8 @@ class TrafficManager {
         this.segments = []; // { id, tiles:Set<tileKey>, corners:Array<{gx,gy}> }
         this.tileKeyToSegmentId = new Map();
         this.segmentsDirty = true;
+        // spawn helpers
+        this.spawnRectPad = 0; // extra padding around spawn tile (px)
     }
 
     buildPaths() {
@@ -360,21 +362,33 @@ class TrafficManager {
         return true;
     }
 
+    // Check if any car's rear point lies within the spawn tile bounds
+    isSpawnTileClear() {
+        const baseKey = this.tileEditor.baseKey;
+        if (!baseKey) return false;
+        const [gx, gy] = baseKey.split(',').map(Number);
+        const x0 = gx * this.tileSize - this.spawnRectPad;
+        const y0 = gy * this.tileSize - this.spawnRectPad;
+        const x1 = (gx + 1) * this.tileSize + this.spawnRectPad;
+        const y1 = (gy + 1) * this.tileSize + this.spawnRectPad;
+        // any car rear point inside?
+        for (const c of this.cars) {
+            const rearX = c.x - Math.sin(c.heading) * (c.height / 2);
+            const rearY = c.y + Math.cos(c.heading) * (c.height / 2);
+            if (rearX >= x0 && rearX <= x1 && rearY >= y0 && rearY <= y1) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     update(dt) {
-        // Simple spawning with capacity cap and cooldown: at most 0.75 cars per tile
+        // Simple spawning with capacity cap and spawn-tile clearance only
         const totalTiles = Math.max(1, this.tileEditor.tiles.size);
         const capacity = 0.75 * totalTiles;
-        this.spawnCooldown = Math.max(0, this.spawnCooldown - dt);
-        if (this.cars.length < Math.min(this.maxCars, capacity) && this.spawnCooldown <= 0) {
-            if (Math.random() < this.spawnRate) {
-                if (this.spawnCar()) {
-                    // Compute average desired speed to scale the gap (slower → longer gap)
-                    const avgDesired = this.cars.length > 0
-                        ? this.cars.reduce((s, c) => s + (c.desiredSpeed || 1), 0) / this.cars.length
-                        : 1.1;
-                    const scale = Math.max(0.6, Math.min(2.0, 1.2 / Math.max(0.3, avgDesired)));
-                    this.spawnCooldown = this.baseSpawnGap * scale;
-                }
+        if (this.cars.length < Math.min(this.maxCars, capacity)) {
+            if (this.isSpawnTileClear()) {
+                this.spawnCar();
             }
         }
         

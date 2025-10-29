@@ -1,0 +1,62 @@
+Two‑Way Four‑Lane Road Design (Tilemap)
+
+Goal
+- Convert the current one‑way, 3‑lane tile system into a two‑way, 4‑lane system:
+  - Two lanes per direction (A→B and B→A)
+  - A physical divider/collision barrier between opposing directions within a tile
+  - No divider or lane markings on junction tiles (isTurn=true)
+  - Round‑robin turning at junctions
+  - Multiple spawn points with a minimum threshold check before Driving mode
+  - Dedicated spawn tiles
+  - Add traffic signals at T/cross intersections for safe conflict resolution
+
+Core Concepts
+1) Tile types
+   - Normal segment tile (4 lanes): two lanes each direction, with a central divider (collision‑active)
+   - Junction tile (isTurn=true): no divider or lane dashes; acts as connector
+   - Spawn tile: a designated endpoint tile (per direction) for safe car injection
+
+2) Lanes and divider
+   - Each segment tile provides two unidirectional lanes for Direction A and two for Direction B
+   - A divider is drawn and collision‑active to prevent crossing into opposing direction
+   - Lane dashes drawn only on normal tiles; omitted on junction tiles
+
+3) Direction and routing
+   - Cars are assigned a travel direction and lane at spawn
+   - Movement is lane‑constrained; no use of opposing lanes by default
+   - At junctions, use round‑robin selection for outgoing branches (per junction) to distribute flow
+
+4) Spawn points and minimum threshold
+   - Multiple spawn tiles allowed; each belongs to a direction and is an endpoint
+   - Before entering Driving mode, compute minSpawnPoints by:
+     - Heuristic (pick max of):
+       - f1(area of outer bounding rectangle), or
+       - f2(number of tiles), or
+       - f3(number of junctions/branches)
+   - If available spawn points < minSpawnPoints, alert user and keep Editing mode
+
+5) Traffic signals at intersections
+   - For T and cross intersections, attach a simple signal controller to the junction tile
+   - Signal phases arbitrate conflicting movements to prevent collisions and reduce gridlock
+
+6) Collision and visibility
+   - Divider is part of collision geometry on segment tiles
+   - On junction tiles, hide divider/dashes and rely on signals/priority
+
+7) Extensibility
+   - Later: add overtaking using adjacent lane when safe; add adaptive signal timing; add density‑aware spawn balancing
+
+Out‑of‑Scope (initial phase)
+   - Complex right‑of‑way rules beyond signals
+   - Overtaking into opposing lanes
+   - Multi‑vehicle platooning, advanced gap acceptance
+
+Acceptance Criteria
+   - Four lanes per segment tile with a collision divider
+   - Junction tiles suppress dashes/divider
+   - Round‑robin turning works at each junction
+   - Multiple spawn tiles supported; min spawn threshold gated before Driving
+   - Cars per direction stay in their lanes; no head‑on conflicts on the same lane segment
+   - Signals control conflicts at T/cross junctions
+
+
