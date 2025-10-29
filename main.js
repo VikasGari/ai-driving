@@ -14,6 +14,10 @@ resizeCanvas();
 
 let mode = "EDITING";
 const road = new Road(canvas.width / 2, 200, 3);
+let useNetwork = true; // enable road network editing by default
+let roadNetwork = new RoadNetwork(canvas.width / 2, canvas.height / 2, road.width);
+let useTilemap = true; // enable tilemap road editor
+let tilemapEditor = new TilemapRoadEditor(60);
 const carHeight = 50;
 const SPAWN_PADDING = 5;
 let startPose = road.getLaneStartPose(1);
@@ -27,12 +31,15 @@ const car = new Car(
   "PLAYER"
 );
 car.angle = startPose.angle;
+const agent = new Policy();
+const obsBuilder = new ObservationBuilder(road, car);
 
 let traffic = [];
 let MAX_TRAFFIC = 10;
-const CAR_DENSITY = 300;
+const CAR_DENSITY = 300; // cars per pixels of lane length
 const TRAFFIC_SPAWN_RATE = 0.02;
-const TRAFFIC_SPEED = 2.0;
+const TRAFFIC_SPEED_MIN_FACTOR = 0.6; // fraction of player max
+const TRAFFIC_SPEED_MAX_FACTOR = 0.85; // fraction of player max
 const SPAWN_SAFE_DISTANCE = 80;
 
 const showPolygonCheckbox = document.getElementById("showPolygon");
@@ -44,6 +51,28 @@ zoomSlider.value = zoom;
 zoomSlider.addEventListener("input", (event) => {
   zoom = parseFloat(event.target.value);
 });
+function updateTilePropsUI() {
+  const el = document.getElementById("tileProps");
+  if (!useTilemap || !el) return;
+  const key = tilemapEditor.selectedKey;
+  if (!key || !tilemapEditor.tiles.has(key)) {
+    el.textContent = "No tile selected";
+    return;
+  }
+  const t = tilemapEditor.tiles.get(key);
+  const deg = Math.round((t.baseOrientationAngle * 180) / Math.PI) % 360;
+  let html = `Grid: (${t.gridX}, ${t.gridY})<br>Orientation: ${deg}°<br>isTurn: ${t.isTurn}<br>isLShape: ${t.isLShape}`;
+  // Show button nextTileOrientationBaseAngle for all four buttons
+  html += '<br><b>Button nextTileOrientationBaseAngle:</b><br>';
+  const btns = t.getButtons(tilemapEditor);
+  for (const b of btns) {
+    const nextDeg = Math.round((b.nextAngle * 180) / Math.PI) % 360;
+    html += `${b.key}: ${nextDeg}°`;
+    if (b.active) html += ' (active)';
+    html += '<br>';
+  }
+  el.innerHTML = html;
+}
 drivingBtn.addEventListener("click", () => {
   mode = "DRIVING";
   drivingBtn.classList.add("active");
@@ -71,7 +100,7 @@ function resetCar() {
 
 function updateMaxTraffic() {
   const roadLength = road.getLanePathLength(1);
-  MAX_TRAFFIC = Math.floor(roadLength / CAR_DENSITY);
+  MAX_TRAFFIC = Math.max(0, Math.floor(roadLength / CAR_DENSITY));
 }
 updateMaxTraffic();
 
@@ -89,6 +118,54 @@ function addEventListeners() {
     dragTarget = null;
   });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  // Zoom with wheel
+  canvas.addEventListener("wheel", (e) => {
+    const prevZoom = zoom;
+    const delta = e.deltaY > 0 ? -0.05 : 0.05;
+    zoom = Math.max(0.3, Math.min(1.5, zoom + delta));
+    // Keep mouse position stable (simple recenter towards cursor)
+    const rect = canvas.getBoundingClientRect();
+    const mouseScreenX = e.clientX - rect.left;
+    const mouseScreenY = e.clientY - rect.top;
+    const cx = cameraTarget ? cameraTarget.x : 0;
+    const cy = cameraTarget ? cameraTarget.y : 0;
+    const worldBefore = { x: cx + (mouseScreenX - canvas.width / 2) / prevZoom, y: cy + (mouseScreenY - canvas.height / 2) / prevZoom };
+    const worldAfter = { x: cx + (mouseScreenX - canvas.width / 2) / zoom, y: cy + (mouseScreenY - canvas.height / 2) / zoom };
+    // Shift camera to keep world point under cursor approximately stationary
+    if (cameraTarget && typeof cameraTarget.x === "number") {
+      cameraTarget.x += worldBefore.x - worldAfter.x;
+      cameraTarget.y += worldBefore.y - worldAfter.y;
+    }
+    e.preventDefault();
+  }, { passive: false });
+  // Middle mouse drag to pan when editing with network
+  let panning = false;
+  let panStart = { x: 0, y: 0 };
+  let cameraStart = { x: 0, y: 0 };
+  canvas.addEventListener("mousedown", (e) => {
+    if (mode === "EDITING" && useNetwork && e.button === 1) {
+      panning = true;
+      panStart = { x: e.clientX, y: e.clientY };
+      cameraStart = cameraTarget ? { x: cameraTarget.x, y: cameraTarget.y } : { x: 0, y: 0 };
+      e.preventDefault();
+    }
+    if (mode === "EDITING" && useTilemap && e.button === 2) {
+      const m = getMousePos(e);
+      const removed = tilemapEditor.removeTileAtWorld(m.x, m.y);
+      if (removed) {
+        updateTilePropsUI();
+      }
+    }
+  });
+  window.addEventListener("mouseup", () => { panning = false; });
+  window.addEventListener("mousemove", (e) => {
+    if (panning && cameraTarget) {
+      const dx = (e.clientX - panStart.x) / zoom;
+      const dy = (e.clientY - panStart.y) / zoom;
+      cameraTarget.x = cameraStart.x - dx;
+      cameraTarget.y = cameraStart.y - dy;
+    }
+  });
 }
 function getMousePos(event) {
   const rect = canvas.getBoundingClientRect();
@@ -103,6 +180,23 @@ function getMousePos(event) {
 function handleMouseDown(event) {
   if (mode !== "EDITING") return;
   mouse = getMousePos(event);
+  if (useTilemap) {
+    const handled = tilemapEditor.handleClick(mouse.x, mouse.y);
+    if (handled) {
+      updateTilePropsUI();
+      return;
+    }
+    // Select tile if clicking inside tile body (not on buttons)
+    const selected = tilemapEditor.selectByWorld(mouse.x, mouse.y);
+    if (selected) {
+      updateTilePropsUI();
+      return;
+    }
+  }
+  if (useNetwork) {
+    const handled = roadNetwork.handleClick(mouse.x, mouse.y);
+    if (handled) return;
+  }
   const lastPoint = road.points[road.points.length - 1];
   const dist = Math.hypot(mouse.x - lastPoint.x, mouse.y - lastPoint.y);
   if (dist < draggerSize / zoom) {
@@ -117,7 +211,7 @@ function handleMouseDown(event) {
 }
 function handleMouseMove(event) {
   mouse = getMousePos(event);
-  if (isDragging) {
+  if (!useNetwork && isDragging) {
     dragTarget = mouse;
   }
 }
@@ -133,6 +227,19 @@ function animate() {
     traffic[i].update(road.borders, [...traffic, car], "DRIVING", lanePath);
   }
   car.update(road.borders, traffic, mode);
+
+  // Agent control in DRIVING mode
+  if (mode === "DRIVING") {
+    const obs = obsBuilder.build(traffic, 1);
+    const action = agent.act(obs, "NORMAL");
+    // Map action: steer and accel
+    const steer = AgentUtils.clamp(action.steer, -1, 1);
+    const accel = AgentUtils.clamp(action.accel, -1, 1);
+    car.controls.left = steer < -0.2;
+    car.controls.right = steer > 0.2;
+    car.controls.forward = accel > 0.05;
+    car.controls.reverse = accel < -0.05;
+  }
 
   // Only run spawning/despawning and other GAMEPLAY logic in DRIVING mode
   if (mode === "DRIVING") {
@@ -161,11 +268,16 @@ function animate() {
           30,
           carHeight,
           "DUMMY",
-          TRAFFIC_SPEED
+          2.0
         );
         newCar.angle = spawnPose.angle;
         newCar.lane = laneIndex;
-        newCar.speed = TRAFFIC_SPEED;
+        // Sample speed as a fraction of player max
+        const minV = car.maxSpeed * TRAFFIC_SPEED_MIN_FACTOR;
+        const maxV = car.maxSpeed * TRAFFIC_SPEED_MAX_FACTOR;
+        const sampled = minV + Math.random() * (maxV - minV);
+        newCar.speed = sampled;
+        newCar.maxSpeed = sampled;
         newCar.pathProgress = startOffset;
         traffic.push(newCar);
       }
@@ -196,6 +308,13 @@ function animate() {
 
   if (mode === "DRIVING") {
     cameraTarget = car;
+  } else if (useTilemap) {
+    const bounds = tilemapEditor.getBounds();
+    cameraTarget = {
+      x: (bounds.minX + bounds.maxX) / 2,
+      y: (bounds.minY + bounds.maxY) / 2
+    };
+    // snap to grid center for nicer panning baseline
   } else {
     cameraTarget = road.points[road.points.length - 1];
   }
@@ -206,7 +325,13 @@ function animate() {
   ctx.scale(zoom, zoom);
   ctx.translate(-cameraTarget.x, -cameraTarget.y);
 
-  road.draw(ctx);
+  if (useTilemap) {
+    tilemapEditor.draw(ctx);
+  } else if (useNetwork && roadNetwork) {
+    roadNetwork.draw(ctx);
+  } else {
+    road.draw(ctx);
+  }
   for (let i = 0; i < traffic.length; i++) {
     traffic[i].draw(ctx, "gray", showPolygonCheckbox.checked);
   }

@@ -6,6 +6,7 @@ class Road {
       { x: x, y: 500 },
       { x: x, y: 100 },
     ];
+    this.centerline = [];
     this.roadPolygon = [];
     this.borders = [];
     this.lanePaths = [];
@@ -52,40 +53,58 @@ class Road {
   // --------------------------------------------------------
 
   #generateRoad() {
-    const { left: leftControlPoints } = this.#generateSplineControlPoints(
-      this.points,
-      this.width / 2
-    );
-    const { right: rightControlPoints } = this.#generateSplineControlPoints(
-      this.points,
-      -this.width / 2
-    );
-    const leftBorder = this.#generateSplinePath(leftControlPoints, 15);
-    const rightBorder = this.#generateSplinePath(rightControlPoints, 15);
+    // 1) Build a high-resolution centerline from the control points
+    const centerlinePath = this.#generateSplinePath(this.points, 15);
+    this.centerline = centerlinePath;
+
+    if (centerlinePath.length < 2) {
+      this.borders = [];
+      this.lanePaths = [];
+      this.roadPolygon = [];
+      return;
+    }
+
+    // 2) Compute per-point normals for Frenet offsets
+    const normals = [];
+    for (let i = 0; i < centerlinePath.length; i++) {
+      const pPrev = centerlinePath[Math.max(0, i - 1)];
+      const pNext = centerlinePath[Math.min(centerlinePath.length - 1, i + 1)];
+      const tangent = normalize(subtract(pNext, pPrev));
+      const normal = { x: -tangent.y, y: tangent.x };
+      normals.push(normalize(normal));
+    }
+
+    // 3) Generate borders by offsetting centerline
+    const halfWidth = this.width / 2;
+    const leftBorder = [];
+    const rightBorder = [];
+    for (let i = 0; i < centerlinePath.length; i++) {
+      const p = centerlinePath[i];
+      const n = normals[i];
+      leftBorder.push(add(p, scale(n, halfWidth)));
+      rightBorder.push(add(p, scale(n, -halfWidth)));
+    }
+
     this.borders = [leftBorder, rightBorder];
+
+    // 4) Generate lane center paths by offsets
     this.lanePaths = [];
     for (let i = 0; i < this.laneCount; i++) {
       const laneWidth = this.width / this.laneCount;
-      const offset = lerp(
+      const lateralOffset = lerp(
         -this.width / 2 + laneWidth / 2,
         this.width / 2 - laneWidth / 2,
         this.laneCount > 1 ? i / (this.laneCount - 1) : 0.5
       );
-      const { left: laneControlPoints } = this.#generateSplineControlPoints(
-        this.points,
-        offset
-      );
-      this.lanePaths.push(this.#generateSplinePath(laneControlPoints, 15));
+      const lanePath = [];
+      for (let j = 0; j < centerlinePath.length; j++) {
+        lanePath.push(add(centerlinePath[j], scale(normals[j], lateralOffset)));
+      }
+      this.lanePaths.push(lanePath);
     }
-    if (leftBorder.length > 0 && rightBorder.length > 0) {
-      const startCap = [leftBorder[0], rightBorder[0]];
-      const endCap = [
-        leftBorder[leftBorder.length - 1],
-        rightBorder[rightBorder.length - 1],
-      ];
-      this.borders.push(startCap, endCap);
-    }
-    this.roadPolygon = [...rightBorder, ...leftBorder.reverse()];
+
+    // 5) Road polygon for fill
+    this.roadPolygon = [...rightBorder, ...leftBorder.slice().reverse()];
   }
 
   #generateSplineControlPoints(points, offset) {
