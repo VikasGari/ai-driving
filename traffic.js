@@ -204,7 +204,9 @@ class TrafficManager {
         this.allowedEdges = new Set();
         this.travelDirections = new Map(); // Store travel direction for each segment
         this.seeded = false;
-        this.spawnRate = 0.1; // probability per frame (0.1 = 10% chance per frame)
+        this.spawnRate = 0.05; // slower cars → lower default spawn probability per frame
+        this.spawnCooldown = 0; // seconds until next spawn attempt allowed
+        this.baseSpawnGap = 2.5; // base gap in seconds, scaled by fleet speed
 
         // Segments: contiguous runs of non-turn tiles between turn tiles
         this.segments = []; // { id, tiles:Set<tileKey>, corners:Array<{gx,gy}> }
@@ -359,11 +361,21 @@ class TrafficManager {
     }
 
     update(dt) {
-        // Simple spawning with capacity cap: at most 0.75 cars per tile
+        // Simple spawning with capacity cap and cooldown: at most 0.75 cars per tile
         const totalTiles = Math.max(1, this.tileEditor.tiles.size);
         const capacity = 0.75 * totalTiles;
-        if (this.cars.length < Math.min(this.maxCars, capacity) && Math.random() < this.spawnRate) {
-            this.spawnCar();
+        this.spawnCooldown = Math.max(0, this.spawnCooldown - dt);
+        if (this.cars.length < Math.min(this.maxCars, capacity) && this.spawnCooldown <= 0) {
+            if (Math.random() < this.spawnRate) {
+                if (this.spawnCar()) {
+                    // Compute average desired speed to scale the gap (slower → longer gap)
+                    const avgDesired = this.cars.length > 0
+                        ? this.cars.reduce((s, c) => s + (c.desiredSpeed || 1), 0) / this.cars.length
+                        : 1.1;
+                    const scale = Math.max(0.6, Math.min(2.0, 1.2 / Math.max(0.3, avgDesired)));
+                    this.spawnCooldown = this.baseSpawnGap * scale;
+                }
+            }
         }
         
         // Update all cars
