@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4u - Admin Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/4u-admin/style.css">
+</head>
+<body>
+    <div class="bg-glow-wrapper">
+        <div class="bg-glow"></div>
+        <div class="bg-glow-2"></div>
+    </div>
+
+    <!-- Dashboard screen (Shown immediately) -->
+    <div class="dashboard-wrapper" id="dashboardWrapper">
+        <!-- Header -->
+        <header class="dash-header">
+            <div class="header-logo">
+                <span class="logo-emoji">⚡</span>
+                <span class="logo-text">4u Admin Control Center</span>
+            </div>
+            <div class="header-actions">
+                <span class="status-indicator" id="statusIndicator">
+                    <span class="status-dot pulsing"></span>
+                    <span class="status-text">Connecting...</span>
+                </span>
+                <button class="dash-btn btn-refresh" id="btnRefresh" title="Refresh Logs">
+                    <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l.57.81" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Refresh
+                </button>
+            </div>
+        </header>
+
+        <main class="dash-content">
+            <!-- Summary Stats -->
+            <section class="stats-grid">
+                <!-- Page Loads Card -->
+                <div class="stat-card">
+                    <div class="stat-icon-wrapper blue">
+                        🚀
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Page Loads</span>
+                        <h2 class="stat-value" id="statPageLoads">0</h2>
+                    </div>
+                </div>
+
+                <!-- Proposal Status Card -->
+                <div class="stat-card">
+                    <div class="stat-icon-wrapper red">
+                        💖
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Proposal Status</span>
+                        <h2 class="stat-value" id="statProposalStatus">Pending</h2>
+                        <span class="stat-subtext" id="statProposalTally">Yes: 0 | No: 0</span>
+                    </div>
+                </div>
+
+                <!-- Downloads Card -->
+                <div class="stat-card">
+                    <div class="stat-icon-wrapper green">
+                        📥
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Downloads</span>
+                        <h2 class="stat-value" id="statDownloads">0</h2>
+                        <span class="stat-subtext" id="statDownloadsTally">Blocked attempts: 0</span>
+                    </div>
+                </div>
+
+                <!-- Unique Visitors Card -->
+                <div class="stat-card">
+                    <div class="stat-icon-wrapper violet">
+                        👥
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Unique Visitors</span>
+                        <h2 class="stat-value" id="statVisitors">0</h2>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Filters and Search -->
+            <section class="controls-panel">
+                <div class="search-box-wrapper">
+                    <input type="text" id="logSearch" placeholder="Search by IP, Action or Device..." class="search-input">
+                </div>
+                <div class="filter-buttons">
+                    <button class="filter-btn active" data-filter="all">All Logs</button>
+                    <button class="filter-btn" data-filter="loads">Page Loads</button>
+                    <button class="filter-btn" data-filter="proposals">Proposals</button>
+                    <button class="filter-btn" data-filter="downloads">Downloads</button>
+                    <button class="filter-btn" data-filter="navigation">Navigation</button>
+                </div>
+            </section>
+
+            <!-- Logs Timeline Container -->
+            <section class="logs-container">
+                <div class="logs-header-bar">
+                    <h3>Real-time Activity Stream</h3>
+                    <span class="logs-count-label" id="logsCountLabel">Showing 0 logs</span>
+                </div>
+                
+                <div class="timeline-empty hidden" id="timelineEmpty">
+                    <div class="empty-emoji">📡</div>
+                    <h4>No interactions recorded yet</h4>
+                    <p>When the proposal page is visited, live events will show up here.</p>
+                </div>
+
+                <div class="timeline" id="timeline">
+                    <!-- Dynamic Log Items Rendered Here -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const btnRefresh = document.getElementById('btnRefresh');
+            const statusDot = document.querySelector('.status-dot');
+            const statusText = document.querySelector('.status-text');
+
+            const statPageLoads = document.getElementById('statPageLoads');
+            const statProposalStatus = document.getElementById('statProposalStatus');
+            const statProposalTally = document.getElementById('statProposalTally');
+            const statDownloads = document.getElementById('statDownloads');
+            const statDownloadsTally = document.getElementById('statDownloadsTally');
+            const statVisitors = document.getElementById('statVisitors');
+            
+            const logSearch = document.getElementById('logSearch');
+            const filterBtns = document.querySelectorAll('.filter-btn');
+            const timeline = document.getElementById('timeline');
+            const timelineEmpty = document.getElementById('timelineEmpty');
+            const logsCountLabel = document.getElementById('logsCountLabel');
+
+            let allLogs = [];
+            let currentFilter = 'all';
+            let searchQuery = '';
+
+            // API endpoint detection
+            const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && window.location.port !== '3000'
+                ? 'http://localhost:3000/api/log'
+                : '/api/log';
+
+            // Refresh click
+            btnRefresh.addEventListener('click', () => {
+                btnRefresh.classList.add('loading');
+                fetchLogs();
+            });
+
+            // Filter button selection
+            filterBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    filterBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentFilter = btn.dataset.filter;
+                    renderTimeline();
+                });
+            });
+
+            // Search input
+            logSearch.addEventListener('input', (e) => {
+                searchQuery = e.target.value.toLowerCase().trim();
+                renderTimeline();
+            });
+
+            async function fetchLogs() {
+                try {
+                    statusDot.className = 'status-dot pulsing';
+                    statusText.textContent = 'Syncing...';
+                    
+                    const res = await fetch(API_URL);
+                    const contentType = res.headers.get("content-type");
+                    if (!contentType || !contentType.includes("application/json")) {
+                        throw new Error("Server did not return JSON. Make sure the API server is running.");
+                    }
+                    if (!res.ok) {
+                        throw new Error('Server returned ' + res.status);
+                    }
+                    
+                    const data = await res.json();
+                    allLogs = data.logs || [];
+                    
+                    statusDot.className = 'status-dot online';
+                    statusText.textContent = 'Connected';
+                    
+                    calculateMetrics();
+                    renderTimeline();
+                } catch (err) {
+                    statusDot.className = 'status-dot offline';
+                    statusText.textContent = 'Offline';
+                    console.error('Failed to fetch logs:', err);
+                    
+                    timelineEmpty.innerHTML = `
+                        <div class="empty-emoji">📡</div>
+                        <h4>API Server is Offline</h4>
+                        <p>To run the API and dashboard locally, run the dev server in your project folder: <br><code style="background: rgba(255,255,255,0.08); padding: 4px 8px; border-radius: 6px; font-family: monospace; display: inline-block; margin-top: 8px;">node api/server.js</code><br><br>Then open: <a href="http://localhost:3000/4u-admin" style="color: #c084fc; text-decoration: underline;">http://localhost:3000/4u-admin</a></p>
+                    `;
+                    timelineEmpty.classList.remove('hidden');
+                } finally {
+                    btnRefresh.classList.remove('loading');
+                }
+            }
+
+            function calculateMetrics() {
+                // Page Loads
+                const loads = allLogs.filter(l => l.action === 'page_load').length;
+                statPageLoads.textContent = loads;
+
+                // Proposal Status
+                // Group by IP/Session to see their latest choice
+                const proposalLogs = allLogs.filter(l => l.action === 'proposal_choice');
+                let yesCount = 0;
+                let noCount = 0;
+                
+                // Track by IP to avoid duplicates if reset multiple times
+                const visitorChoices = {};
+                
+                // Process chronologically (rowKey is newest first, so we reverse it to process oldest first to see the final choice)
+                const chronologicalProposals = [...proposalLogs].reverse();
+                chronologicalProposals.forEach(p => {
+                    let parsedDetails = {};
+                    try {
+                        parsedDetails = typeof p.details === 'string' ? JSON.parse(p.details) : (p.details || {});
+                    } catch(e) {}
+                    
+                    visitorChoices[p.ip] = parsedDetails.choice;
+                });
+
+                Object.values(visitorChoices).forEach(c => {
+                    if (c === 'yes') yesCount++;
+                    if (c === 'no') noCount++;
+                });
+
+                // Display proposal state based on overall tally
+                if (yesCount > 0) {
+                    statProposalStatus.textContent = 'Accepted! ❤️';
+                    statProposalStatus.className = 'stat-value success-text';
+                } else if (noCount > 0) {
+                    statProposalStatus.textContent = 'Rejected 💔';
+                    statProposalStatus.className = 'stat-value danger-text';
+                } else {
+                    statProposalStatus.textContent = 'Pending ✉️';
+                    statProposalStatus.className = 'stat-value';
+                }
+                statProposalTally.textContent = `Yes responses: ${yesCount} | No responses: ${noCount}`;
+
+                // Downloads
+                const downloadsAllowed = allLogs.filter(l => l.action === 'download_pfp').length;
+                const downloadsBlocked = allLogs.filter(l => l.action === 'download_attempt_blocked').length;
+                statDownloads.textContent = downloadsAllowed;
+                statDownloadsTally.textContent = `Blocked attempts: ${downloadsBlocked}`;
+
+                // Unique Visitors
+                const uniqueIPs = new Set(allLogs.map(l => l.ip)).size;
+                statVisitors.textContent = uniqueIPs;
+            }
+
+            function parseUserAgent(ua) {
+                if (!ua) return "Unknown Device";
+                let os = "Unknown OS";
+                if (ua.includes("Windows NT 10.0")) os = "Windows 10/11";
+                else if (ua.includes("Windows NT 6.1")) os = "Windows 7";
+                else if (ua.includes("iPhone")) os = "iPhone";
+                else if (ua.includes("iPad")) os = "iPad";
+                else if (ua.includes("Macintosh")) os = "Mac OS X";
+                else if (ua.includes("Android")) os = "Android";
+                else if (ua.includes("Linux")) os = "Linux";
+
+                let browser = "Unknown Browser";
+                if (ua.includes("Edg/")) browser = "Edge";
+                else if (ua.includes("Chrome") && ua.includes("Safari")) browser = "Chrome";
+                else if (ua.includes("Safari") && !ua.includes("Chrome")) browser = "Safari";
+                else if (ua.includes("Firefox")) browser = "Firefox";
+                
+                return `${browser} on ${os}`;
+            }
+
+            function getEventIcon(action, details) {
+                switch(action) {
+                    case 'page_load': return '🚀';
+                    case 'letter_open': return '✉️';
+                    case 'slide_nav': return '🧭';
+                    case 'proposal_choice': 
+                        let parsed = {};
+                        try { parsed = typeof details === 'string' ? JSON.parse(details) : (details || {}); } catch(e){}
+                        return parsed.choice === 'yes' ? '💖' : '💔';
+                    case 'navigate_to_pfps':
+                        let pfpParsed = {};
+                        try { pfpParsed = typeof details === 'string' ? JSON.parse(details) : (details || {}); } catch(e){}
+                        return pfpParsed.branch === 'yes' ? '💕' : '🚪';
+                    case 'download_pfp': return '📥';
+                    case 'download_attempt_blocked': return '🔒';
+                    case 'reset_flow': return '🔄';
+                    case 'modal_close': return '❌';
+                    default: return '📡';
+                }
+            }
+
+            function getEventTitle(action, details) {
+                switch(action) {
+                    case 'page_load': return 'Page Loaded';
+                    case 'letter_open': return 'Opened Love Letter';
+                    case 'slide_nav': 
+                        let parsedSlide = {};
+                        try { parsedSlide = typeof details === 'string' ? JSON.parse(details) : (details || {}); } catch(e){}
+                        return `Viewed Proposal Slide ${parsedSlide.slide || ''}`;
+                    case 'proposal_choice':
+                        let parsedChoice = {};
+                        try { parsedChoice = typeof details === 'string' ? JSON.parse(details) : (details || {}); } catch(e){}
+                        return parsedChoice.choice === 'yes' ? 'Accepted Proposal! (SAID YES)' : 'Declined Proposal (SAID NO)';
+                    case 'navigate_to_pfps':
+                        let parsedBranch = {};
+                        try { parsedBranch = typeof details === 'string' ? JSON.parse(details) : (details || {}); } catch(e){}
+                        return parsedBranch.branch === 'yes' ? 'Entered Couples PFP Mode' : 'Entered Normal PFP Mode';
+                    case 'download_pfp':
+                        let parsedDl = {};
+                        try { parsedDl = typeof details === 'string' ? JSON.parse(details) : (details || {}); } catch(e){}
+                        const fileBase = parsedDl.file ? parsedDl.file.split('/').pop() : 'PFP';
+                        return `Downloaded: ${fileBase}`;
+                    case 'download_attempt_blocked':
+                        let parsedBlocked = {};
+                        try { parsedBlocked = typeof details === 'string' ? JSON.parse(details) : (details || {}); } catch(e){}
+                        const blockedFile = parsedBlocked.file ? parsedBlocked.file.split('/').pop() : 'PFP';
+                        return `Download Blocked: ${blockedFile}`;
+                    case 'reset_flow': return 'Reset Proposal Flow';
+                    case 'modal_close': return 'Closed Proposal Modal';
+                    default: return action;
+                }
+            }
+
+            function getEventClass(action, details) {
+                switch(action) {
+                    case 'proposal_choice':
+                        let parsed = {};
+                        try { parsed = typeof details === 'string' ? JSON.parse(details) : (details || {}); } catch(e){}
+                        return parsed.choice === 'yes' ? 'event-yes' : 'event-no';
+                    case 'download_pfp': return 'event-download';
+                    case 'download_attempt_blocked': return 'event-blocked';
+                    case 'page_load': return 'event-load';
+                    default: return '';
+                }
+            }
+
+            function formatTime(isoString) {
+                const date = new Date(isoString);
+                // Return format: HH:MM:SS - YYYY-MM-DD
+                const pad = (num) => String(num).padStart(2, '0');
+                const time = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+                const days = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+                return `${time} (${days})`;
+            }
+
+            function getRelativeTime(isoString) {
+                const date = new Date(isoString);
+                const seconds = Math.floor((new Date() - date) / 1000);
+                
+                if (seconds < 5) return 'just now';
+                if (seconds < 60) return `${seconds}s ago`;
+                
+                const minutes = Math.floor(seconds / 60);
+                if (minutes < 60) return `${minutes}m ago`;
+                
+                const hours = Math.floor(minutes / 60);
+                if (hours < 24) return `${hours}h ago`;
+                
+                const days = Math.floor(hours / 24);
+                return `${days}d ago`;
+            }
+
+            function renderTimeline() {
+                // Filter logs
+                let filtered = allLogs.filter(log => {
+                    // Check search query
+                    const detailsStr = typeof log.details === 'string' ? log.details : JSON.stringify(log.details || {});
+                    const matchesSearch = 
+                        log.ip.includes(searchQuery) ||
+                        log.action.toLowerCase().includes(searchQuery) ||
+                        detailsStr.toLowerCase().includes(searchQuery) ||
+                        parseUserAgent(log.userAgent).toLowerCase().includes(searchQuery);
+                    
+                    if (!matchesSearch) return false;
+
+                    // Check filters
+                    if (currentFilter === 'all') return true;
+                    if (currentFilter === 'loads') return log.action === 'page_load';
+                    if (currentFilter === 'proposals') return ['proposal_choice', 'letter_open', 'reset_flow'].includes(log.action);
+                    if (currentFilter === 'downloads') return ['download_pfp', 'download_attempt_blocked'].includes(log.action);
+                    if (currentFilter === 'navigation') return ['slide_nav', 'navigate_to_pfps', 'modal_close'].includes(log.action);
+                    
+                    return true;
+                });
+
+                logsCountLabel.textContent = `Showing ${filtered.length} log${filtered.length === 1 ? '' : 's'}`;
+
+                if (filtered.length === 0) {
+                    timeline.innerHTML = '';
+                    timelineEmpty.classList.remove('hidden');
+                    return;
+                }
+
+                timelineEmpty.classList.add('hidden');
+
+                timeline.innerHTML = filtered.map(log => {
+                    const icon = getEventIcon(log.action, log.details);
+                    const title = getEventTitle(log.action, log.details);
+                    const eventClass = getEventClass(log.action, log.details);
+                    const formattedTimeStr = formatTime(log.timestamp);
+                    const relativeTime = getRelativeTime(log.timestamp);
+                    const device = parseUserAgent(log.userAgent);
+
+                    return `
+                        <div class="timeline-item ${eventClass}">
+                            <div class="timeline-icon">${icon}</div>
+                            <div class="timeline-content">
+                                <div class="timeline-header">
+                                    <h4 class="event-title">${title}</h4>
+                                    <span class="event-time" title="${formattedTimeStr}">${relativeTime}</span>
+                                </div>
+                                <div class="timeline-meta">
+                                    <span class="meta-item ip-address">
+                                        <svg viewBox="0 0 24 24" fill="none" width="12" height="12" stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/>
+                                        </svg>
+                                        IP: ${log.ip}
+                                    </span>
+                                    <span class="meta-item user-device">
+                                        <svg viewBox="0 0 24 24" fill="none" width="12" height="12" stroke="currentColor" stroke-width="2">
+                                            <rect x="4" y="4" width="16" height="11" rx="2" ry="2"/><line x1="12" y1="15" x2="12" y2="20"/><line x1="8" y1="20" x2="16" y2="20"/>
+                                        </svg>
+                                        ${device}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            // Initial fetch
+            fetchLogs();
+
+            // Periodically refresh logs every 30 seconds
+            setInterval(() => {
+                fetchLogs();
+            }, 30000);
+        });
+    </script>
+</body>
+</html>

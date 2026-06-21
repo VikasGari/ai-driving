@@ -17,7 +17,7 @@ const road = new Road(canvas.width / 2, 200, 3);
 let useNetwork = true; // enable road network editing by default
 let roadNetwork = new RoadNetwork(canvas.width / 2, canvas.height / 2, road.width);
 let useTilemap = true; // enable tilemap road editor
-let tilemapEditor = new TilemapRoadEditor(60);
+let tilemapEditor = new (App && App.Tilemap && App.Tilemap.Core && App.Tilemap.Core.Editor ? App.Tilemap.Core.Editor : function(){ throw new Error('Editor not found'); })(60);
 const carHeight = 50;
 const SPAWN_PADDING = 5;
 let startPose = road.getLaneStartPose(1);
@@ -141,9 +141,27 @@ drivingBtn.addEventListener("click", () => {
     if (carInfo) carInfo.style.display = '';
     tilemapEditor.showButtons = false;
     tilemapEditor.showTileSelection = false;
-    trafficManager = new TrafficManager(tilemapEditor);
-    if (spawnRateSlider) trafficManager.spawnRate = parseFloat(spawnRateSlider.value) / 100; // Convert to probability
-    trafficManager.reset();
+    // Collect spawn tiles
+    const spawnTiles = [];
+    for (const t of tilemapEditor.tiles.values()) {
+      if (t.isSpawn) spawnTiles.push({ gx: t.gridX, gy: t.gridY });
+    }
+    // Validate min spawn points
+    const tilesCount = tilemapEditor.tiles.size;
+    const junctions = Array.from(tilemapEditor.tiles.values()).filter(t => t.isTurn).length;
+    const minSpawnPoints = Math.max(1, Math.ceil(tilesCount * 0.02), Math.ceil(junctions * 0.25));
+    if (spawnTiles.length < minSpawnPoints) {
+      alert(`Not enough spawn points: have ${spawnTiles.length}, need at least ${minSpawnPoints}. Add spawn tiles (S buttons) and try again.`);
+      // revert to editing mode
+      mode = "EDITING";
+      drivingBtn.classList.remove("active");
+      editingBtn.classList.add("active");
+      return;
+    }
+    trafficManager = (window.NewTrafficManager && USE_NEW_SIM)
+      ? new NewTrafficManager(tilemapEditor, spawnTiles)
+      : new TrafficManager(tilemapEditor, spawnTiles);
+    if (trafficManager.reset) trafficManager.reset();
     // Place player car at first tile center with orientation east by default
     const firstKey = tilemapEditor.tiles.keys().next().value;
     if (firstKey) {
@@ -303,6 +321,9 @@ function handleMouseDown(event) {
 }
 function handleMouseMove(event) {
   mouse = getMousePos(event);
+  if (mode === "EDITING" && useTilemap && tilemapEditor) {
+    tilemapEditor.setHoverCell(mouse.x, mouse.y);
+  }
   if (!useNetwork && isDragging) {
     dragTarget = mouse;
   }
@@ -452,3 +473,6 @@ function animate() {
 
   requestAnimationFrame(animate);
 }
+
+/* feature flag for new sim */
+const USE_NEW_SIM = true;

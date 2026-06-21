@@ -3,82 +3,164 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Self-Driving Car Simulation</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Vikas Gari</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0516;
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.6);
+            --accent: #f43f5e;
+            --accent-glow: rgba(244, 63, 94, 0.25);
+            --font-heading: 'Outfit', sans-serif;
+            --font-body: 'Inter', sans-serif;
+            --transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Glowing background orbs */
+        .bg-glow {
+            position: absolute;
+            width: 450px;
+            height: 450px;
+            background: radial-gradient(circle, rgba(144, 97, 249, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 0;
+            pointer-events: none;
+            filter: blur(50px);
+        }
+
+        .container {
+            text-align: center;
+            z-index: 10;
+            padding: 2rem;
+            animation: fadeIn 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .title {
+            font-family: var(--font-heading);
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ffffff 40%, #c084fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.03em;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            margin-bottom: 2.5rem;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        /* Premium Navigation Button */
+        .nav-btn {
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1.1rem 2.2rem;
+            background: linear-gradient(135deg, #f43f5e 0%, #7c3aed 100%);
+            border: none;
+            border-radius: 50px;
+            color: #ffffff;
+            text-decoration: none;
+            font-family: var(--font-heading);
+            font-weight: 700;
+            font-size: 1.25rem;
+            cursor: pointer;
+            box-shadow: 0 10px 30px rgba(244, 63, 94, 0.3),
+                        0 0 15px rgba(124, 58, 237, 0.2);
+            transition: var(--transition);
+        }
+
+        .nav-btn:hover {
+            transform: translateY(-3px) scale(1.03);
+            box-shadow: 0 15px 35px rgba(244, 63, 94, 0.5),
+                        0 0 25px rgba(124, 58, 237, 0.4);
+        }
+
+        .nav-btn:active {
+            transform: translateY(-1px);
+        }
+
+        .heart-icon {
+            font-size: 1.3rem;
+            filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.6));
+            animation: pulse 1.5s infinite ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.2);
+            }
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 480px) {
+            .title {
+                font-size: 2.5rem;
+            }
+            .subtitle {
+                font-size: 0.95rem;
+            }
+            .nav-btn {
+                padding: 1rem 1.8rem;
+                font-size: 1.1rem;
+            }
+        }
+    </style>
 </head>
 <body>
+    <div class="bg-glow"></div>
+    
     <div class="container">
-        <div id="left-panel">
-            <h1>Controls & Info</h1>
-            
-            <div id="mode-selector">
-                <button id="drivingBtn" class="mode-btn">Driving Mode</button>
-                <button id="editingBtn" class="mode-btn active">Editing Mode</button>
-            </div>
-            <div class="zoom-controls">
-                <label for="spawnRateSlider">Spawn rate (% per frame)</label>
-                <input type="range" id="spawnRateSlider" min="0" max="50" value="10" step="1">
-                <div>Current: <span id="spawnRateValue">10</span>%</div>
-            </div>
-            <div class="map-controls">
-                <h4>Map Controls</h4>
-                <button id="saveMapBtn">Save Map</button>
-                <button id="loadMapBtn">Load Map</button>
-                <input type="file" id="mapFileInput" accept=".json" style="display: none;">
-            </div>
-            <hr>
-            
-            <p>
-                <b>Player Car (in Driving Mode):</b><br> 
-                Use Arrow Keys to drive.
-            </p>
-            <button id="resetBtn">Reset Car</button>
-            <hr>
-            
-            <div class="debug-controls">
-                <input type="checkbox" id="showPolygon" checked>
-                <label for="showPolygon">Show Collision Polygons</label>
-            </div>
-            
-            <!-- NEW: Zoom Slider Control -->
-            <div class="zoom-controls">
-                <label for="zoomSlider">Zoom</label>
-                <input type="range" id="zoomSlider" min="0.3" max="1.5" value="0.7" step="0.05">
-            </div>
-            <hr>
-
-            <p>
-                <b>Road Editor (in Editing Mode):</b><br>
-                - <b>Left-Click & Drag</b> the yellow handle.<br>
-                - <b>Right-Click</b> the yellow handle to add a new segment.
-            </p>
-            <hr>
-            <div id="tile-info">
-                <h3>Tile Properties</h3>
-                <div id="tileProps">No tile selected</div>
-            </div>
-            <hr>
-            <div id="car-info">
-                <h3>Car Properties</h3>
-                <div id="carProps">No car selected</div>
-            </div>
-        </div>
-        <div id="canvas-container">
-            <canvas id="simulationCanvas"></canvas>
-        </div>
+        <h1 class="title">Vikas Gari</h1>
+        <p class="subtitle">Personal Space</p>
+        
+        <a href="/4u/index.html" class="nav-btn" id="navTo4uBtn">
+            <span>for u</span>
+            <span class="heart-icon">❤</span>
+        </a>
     </div>
-
-    <!-- Script files... -->
-    <script src="utils.js"></script>
-    <script src="road.js"></script>
-    <script src="controls.js"></script>
-    <script src="sensor.js"></script>
-    <script src="coord.js"></script>
-    <script src="roadNetwork.js"></script>
-    <script src="tilemapRoad.js"></script>
-    <script src="agent.js"></script>
-    <script src="traffic.js"></script>
-    <script src="car.js"></script>
-    <script src="main.js"></script>
 </body>
 </html>

@@ -1,0 +1,27 @@
+# OS / Editor junk
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+*.bak
+
+# Node / tooling (if introduced later)
+node_modules/
+.npmrc
+
+# Build artifacts (if any get added later)
+dist/
+build/
+coverage/
+
+# Map exports
+map_*.json
+
+# Local environment
+.env
+.env.*
+liikennematto-master
+# Unused/legacy files placeholder (add entries here as we confirm they are unused)
+# legacy_*.js
+# experimental_*.js
