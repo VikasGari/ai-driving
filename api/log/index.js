@@ -1,7 +1,7 @@
 const { TableClient } = require("@azure/data-tables");
 
 // Determine storage option (Use Azure Table Storage if connection string is configured, otherwise fallback to in-memory)
-const connString = process.env.AzureWebJobsStorage;
+const connString = process.env.CUSTOM_STORAGE_CONNECTION || process.env.AzureWebJobsStorage;
 const useAzureTable = connString && connString !== "UseDevelopmentStorage=true" && !connString.startsWith("DefaultEndpointsProtocol=http;AccountName=devstoreaccount1");
 const tableName = "proposallogs";
 
