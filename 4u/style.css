@@ -1,0 +1,231 @@
+/* Design System and Variables - Lovely Theme */
+:root {
+    --bg-primary: #120b15;
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 228, 230, 0.7);
+    --accent: #f43f5e;
+    --accent-light: #fda4af;
+    --accent-glow: rgba(244, 63, 94, 0.15);
+    --border-color: rgba(244, 63, 94, 0.15);
+    --font-heading: 'Outfit', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --font-accent: 'Playfair Display', serif;
+    --transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    overflow-x: hidden;
+    position: relative;
+}
+
+/* Background glowing rose orbs */
+.bg-glow {
+    position: absolute;
+    width: 450px;
+    height: 450px;
+    background: radial-gradient(circle, rgba(244, 63, 94, 0.12) 0%, rgba(0, 0, 0, 0) 70%);
+    top: 15%;
+    left: -10%;
+    z-index: 0;
+    pointer-events: none;
+    filter: blur(50px);
+}
+
+.bg-glow-2 {
+    position: absolute;
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, rgba(251, 113, 133, 0.1) 0%, rgba(0, 0, 0, 0) 70%);
+    bottom: 10%;
+    right: -10%;
+    z-index: 0;
+    pointer-events: none;
+    filter: blur(60px);
+}
+
+/* Container Layout - Tablet Centered View */
+.container {
+    width: 100%;
+    max-width: 768px; /* Tablet view container width */
+    padding: 3rem 1.5rem;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2.5rem;
+    animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Header/Title with elegant cursive styling */
+.title {
+    font-family: var(--font-heading);
+    font-size: 2.8rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #ffffff 40%, var(--accent-light) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-align: center;
+    letter-spacing: -0.02em;
+    position: relative;
+    padding-bottom: 0.5rem;
+}
+
+.title::after {
+    content: "❤";
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 1.1rem;
+    color: var(--accent);
+    text-shadow: 0 0 10px rgba(244, 63, 94, 0.6);
+    animation: pulse 1.8s infinite ease-in-out;
+}
+
+/* Gallery Grid: 2 columns on Tablet, 1 column on Mobile */
+.gallery {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2.25rem;
+}
+
+.gallery-item {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Delay animations for smoother list loading */
+.gallery-item:nth-child(even) {
+    animation-delay: 0.1s;
+}
+
+/* Image Wrapper */
+.image-wrapper {
+    width: 100%;
+    background: rgba(253, 244, 245, 0.02);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color);
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: var(--transition);
+}
+
+.image-wrapper:hover {
+    transform: scale(1.02) translateY(-4px);
+    border-color: rgba(244, 63, 94, 0.45);
+    box-shadow: 0 25px 45px rgba(244, 63, 94, 0.12),
+                0 15px 35px rgba(0, 0, 0, 0.4);
+}
+
+.preview-image {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 3; /* Uniform size for gallery items */
+    object-fit: cover;
+    display: block;
+}
+
+/* Button styling - Cute Rose Red Gradient */
+.download-btn {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 1.05rem;
+    background: linear-gradient(135deg, #fb7185 0%, var(--accent) 50%, #e11d48 100%);
+    border: none;
+    border-radius: 18px;
+    color: #ffffff;
+    text-decoration: none;
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 1.1rem;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(244, 63, 94, 0.22);
+    transition: var(--transition);
+}
+
+.download-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 25px rgba(244, 63, 94, 0.45);
+}
+
+.download-btn:active {
+    transform: translateY(1px);
+}
+
+.download-icon {
+    width: 20px;
+    height: 20px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: translateX(-50%) scale(1);
+    }
+    50% {
+        transform: translateX(-50%) scale(1.2);
+    }
+}
+
+/* Responsive Design - Collapse to 1 column on smaller devices */
+@media (max-width: 680px) {
+    .gallery {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+    }
+    
+    .title {
+        font-size: 2.3rem;
+    }
+    
+    .container {
+        padding: 2rem 1.25rem;
+    }
+}
