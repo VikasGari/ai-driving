@@ -28,7 +28,7 @@ module.exports = async function (context, req) {
         headers: {
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS, DELETE",
             "Access-Control-Allow-Headers": "Content-Type"
         }
     };
@@ -114,6 +114,27 @@ module.exports = async function (context, req) {
 
             context.res.status = 200;
             context.res.body = { logs };
+            return;
+        }
+
+        if (req.method === "DELETE") {
+            if (tableClient) {
+                try {
+                    await tableClient.createTable();
+                    const entities = tableClient.listEntities();
+                    for await (const entity of entities) {
+                        await tableClient.deleteEntity(entity.partitionKey, entity.rowKey);
+                    }
+                } catch (err) {
+                    console.error("Failed to delete entities from Azure Table Storage:", err);
+                    throw err;
+                }
+            }
+            
+            global.localLogs = [];
+            
+            context.res.status = 200;
+            context.res.body = { success: true, message: "Logs cleared successfully." };
             return;
         }
 

@@ -34,7 +34,7 @@ jobs:
           skip_app_build: true
           ###### End of Repository/Build Configurations ######
         env:
-          node_version: "20"
+          AZURE_NODE_VERSION: "20"
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'

@@ -9,6 +9,13 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800&family=Inter:wght@400;600&family=Playfair+Display:ital,wght@1,600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/4u/style.css">
+    <!-- Preload Critical UI Assets -->
+    <link rel="preload" href="/4u/ref/letter.png" as="image" fetchpriority="high">
+    <link rel="preload" href="/4u/ref/waiting_for_reply.gif" as="image" fetchpriority="high">
+    <link rel="preload" href="/4u/ref/happy_background.png" as="image" fetchpriority="high">
+    <link rel="preload" href="/4u/ref/sad_background.png" as="image" fetchpriority="high">
+    <link rel="preload" href="/4u/ref/love.gif" as="image" fetchpriority="high">
+    <link rel="preload" href="/4u/ref/sad.gif" as="image" fetchpriority="high">
 </head>
 <body>
     <div class="bg-glow-wrapper">
@@ -27,7 +34,7 @@
 
     <!-- Floating Letter Gift in Top Right Corner -->
     <div class="letter-container" id="letterContainer">
-        <img src="/4u/ref/letter.png" alt="Love Letter" class="letter-img">
+        <img src="/4u/ref/letter.png" alt="Love Letter" class="letter-img" fetchpriority="high">
     </div>
 
     <!-- Letter Prompt Modal (Redirecting to the letter) -->
@@ -245,7 +252,10 @@
             // Render normal images
             function renderNormalGallery() {
                 gallery.style.opacity = '0';
-                setTimeout(() => {
+                let loaded = false;
+                const loadGallery = () => {
+                    if (loaded) return;
+                    loaded = true;
                     gallery.innerHTML = normalImages.map((img, index) => `
                         <div class="gallery-item" style="animation-delay: ${index * 0.05}s">
                             <div class="image-wrapper">
@@ -260,13 +270,23 @@
                         </div>
                     `).join('');
                     gallery.style.opacity = '1';
-                }, 200);
+                };
+
+                if (document.readyState === 'complete') {
+                    setTimeout(loadGallery, 200);
+                } else {
+                    window.addEventListener('load', () => setTimeout(loadGallery, 100), { once: true });
+                    setTimeout(loadGallery, 1500);
+                }
             }
 
             // Render couples images
             function renderCouplesGallery() {
                 gallery.style.opacity = '0';
-                setTimeout(() => {
+                let loaded = false;
+                const loadGallery = () => {
+                    if (loaded) return;
+                    loaded = true;
                     gallery.innerHTML = coupleImages.map((pair, index) => `
                         <!-- Couple Pair ${pair.pair} - Girl -->
                         <div class="gallery-item couples-item" style="animation-delay: ${index * 0.1}s">
@@ -295,7 +315,14 @@
                         </div>
                     `).join('');
                     gallery.style.opacity = '1';
-                }, 200);
+                };
+
+                if (document.readyState === 'complete') {
+                    setTimeout(loadGallery, 200);
+                } else {
+                    window.addEventListener('load', () => setTimeout(loadGallery, 100), { once: true });
+                    setTimeout(loadGallery, 1500);
+                }
             }
 
             // Central State Machine handler

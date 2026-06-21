@@ -35,6 +35,9 @@
                     </svg>
                     Refresh
                 </button>
+                <button class="dash-btn btn-danger" id="btnClearLogs" title="Clear All Logs">
+                    🗑 Clear Logs
+                </button>
             </div>
         </header>
 
@@ -125,6 +128,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const btnRefresh = document.getElementById('btnRefresh');
+            const btnClearLogs = document.getElementById('btnClearLogs');
             const statusDot = document.querySelector('.status-dot');
             const statusText = document.querySelector('.status-text');
 
@@ -154,6 +158,38 @@
             btnRefresh.addEventListener('click', () => {
                 btnRefresh.classList.add('loading');
                 fetchLogs();
+            });
+
+            // Clear Logs click
+            btnClearLogs.addEventListener('click', async () => {
+                if (!confirm("Are you sure you want to permanently clear all logs? This cannot be undone.")) {
+                    return;
+                }
+                
+                try {
+                    statusDot.className = 'status-dot pulsing';
+                    statusText.textContent = 'Clearing...';
+                    
+                    const res = await fetch(API_URL, {
+                        method: 'DELETE'
+                    });
+                    
+                    if (!res.ok) {
+                        throw new Error('Server returned ' + res.status);
+                    }
+                    
+                    allLogs = [];
+                    calculateMetrics();
+                    renderTimeline();
+                    
+                    statusDot.className = 'status-dot online';
+                    statusText.textContent = 'Cleared';
+                } catch (err) {
+                    statusDot.className = 'status-dot offline';
+                    statusText.textContent = 'Error';
+                    console.error('Failed to clear logs:', err);
+                    alert('Failed to clear logs: ' + err.message);
+                }
             });
 
             // Filter button selection
