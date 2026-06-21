@@ -3,5 +3,8 @@
   "version": "1.0.0",
   "dependencies": {
     "@azure/data-tables": "^13.2.2"
+  },
+  "engines": {
+    "node": "20.x"
   }
 }
