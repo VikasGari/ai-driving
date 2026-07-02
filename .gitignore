@@ -25,3 +25,8 @@ liikennematto-master
 # Unused/legacy files placeholder (add entries here as we confirm they are unused)
 # legacy_*.js
 # experimental_*.js
+
+# Proposal and Logging API
+/4u
+/4u-admin
+/api
