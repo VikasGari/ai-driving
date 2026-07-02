@@ -30,3 +30,19 @@ liikennematto-master
 /4u
 /4u-admin
 /api
+
+# Unreferenced files in main directory and src
+/new_car.js
+/new_events.js
+/new_fsm.js
+/new_road_network.js
+/new_route.js
+/new_rules.js
+/new_steering.js
+/new_traffic.js
+/new_traffic_light.js
+/new_update.js
+/new_world.js
+/main.js
+/style.css
+/src
